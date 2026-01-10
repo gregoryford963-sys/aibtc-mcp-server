@@ -4,9 +4,20 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-stx402-agent is an MCP (Model Context Protocol) server that enables Claude to discover, pay for, and execute x402 endpoints using a user-provided Stacks wallet. The plugin automatically handles x402 payment challenges when accessing paid endpoints.
+stx402-agent is an MCP (Model Context Protocol) server that enables Claude to:
+1. **Discover and execute x402 API endpoints** - Paid API calls for DeFi analytics, AI services, market data
+2. **Execute Stacks blockchain transactions** - Transfer STX, call smart contracts, deploy contracts
 
-Key scope: This project focuses on **consumer-side tooling only**. x402 endpoints are created and maintained in separate repositories.
+The plugin automatically handles x402 payment challenges when accessing paid endpoints.
+
+## API Sources
+
+The agent supports two x402 API sources:
+
+| Source | URL | Endpoints |
+|--------|-----|-----------|
+| x402.biwas.xyz | https://x402.biwas.xyz | DeFi analytics, market data, wallet analysis, Zest/ALEX protocols |
+| stx402.com | https://stx402.com | AI services, cryptography, storage, utilities, agent registry |
 
 ## Build Commands
 
@@ -24,18 +35,23 @@ Claude Code
     ↓ (MCP stdio transport)
 stx402-agent MCP Server (src/index.ts)
     ↓
-API Client with x402 interceptor (src/api.ts)
-    ↓
-Wallet Helper (src/wallet.ts)
-    ↓
-x402 Endpoints (external)
+┌─────────────────────────────────────────────────────────┐
+│  x402 Endpoints                          Stacks TX      │
+│  (via api.ts)                         (via wallet.ts)   │
+│  ┌─────────────┐  ┌─────────────┐                       │
+│  │x402.biwas.xyz│  │ stx402.com  │                       │
+│  └─────────────┘  └─────────────┘                       │
+└─────────────────────────────────────────────────────────┘
+         ↓                    ↓                    ↓
+   x402 API Server     x402 API Server     Stacks Blockchain
 ```
 
 ### Key Files
 
-- `src/index.ts` - MCP server with tool definitions (get_wallet_info, check_position_health, execute_x402_endpoint)
-- `src/api.ts` - Axios client with x402-stacks payment interceptor that auto-pays 402 responses
-- `src/wallet.ts` - Converts mnemonic to Stacks account using @stacks/wallet-sdk
+- `src/index.ts` - MCP server with all tool definitions
+- `src/api.ts` - Axios client with x402-stacks payment interceptor (supports multiple API sources)
+- `src/wallet.ts` - Wallet operations and transaction signing using @stacks/transactions
+- `src/endpoints.ts` - Known x402 endpoint registry from both API sources
 
 ### x402 Payment Flow
 
@@ -51,7 +67,7 @@ x402 Endpoints (external)
 Set environment variables in `.env`:
 - `CLIENT_MNEMONIC` - 24-word Stacks wallet mnemonic (required)
 - `NETWORK` - "mainnet" or "testnet" (default: testnet)
-- `API_URL` - x402 API base URL (default: https://x402.biwas.xyz)
+- `API_URL` - Default x402 API base URL (default: https://x402.biwas.xyz)
 
 ## Adding to Claude Code
 
@@ -73,6 +89,57 @@ Add to your Claude Code MCP settings:
 
 ## Available Tools
 
-- `get_wallet_info` - Returns configured wallet address and network
-- `check_position_health` - Checks Zest protocol position health (x402 endpoint)
-- `execute_x402_endpoint` - Generic tool to call any x402 endpoint with auto-payment
+### Endpoint Discovery
+- `list_x402_endpoints` - List all available x402 endpoints with search/filter by source, category, or keyword. **Use this first** to discover what actions are available.
+
+### Wallet & Balance
+- `get_wallet_info` - Get configured wallet address, network, and API URL
+- `get_stx_balance` - Get STX balance for any address
+
+### Direct Stacks Transactions
+- `transfer_stx` - Transfer STX tokens to a recipient (signs and broadcasts)
+- `call_contract` - Call a smart contract function (signs and broadcasts)
+- `deploy_contract` - Deploy a Clarity smart contract
+- `get_transaction_status` - Check transaction status by txid
+- `broadcast_transaction` - Broadcast a pre-signed transaction
+
+### x402 API Endpoints
+- `execute_x402_endpoint` - Execute any x402 endpoint with automatic payment handling. Supports `apiUrl` parameter to call different API sources.
+
+## Agent Behavior Guidelines
+
+When a user asks for something:
+
+1. **For "transfer X STX to Y"** → Use `transfer_stx` directly
+2. **For DeFi/market queries** → Use `list_x402_endpoints` to find relevant endpoint, then `execute_x402_endpoint`
+3. **For AI services** → Use endpoints from stx402.com with `apiUrl: "https://stx402.com"`
+4. **For unknown actions** → Check `list_x402_endpoints` first. If not found, inform user it's not available.
+
+### Example User Requests
+
+| Request | Action |
+|---------|--------|
+| "Send 2 STX to ST1..." | `transfer_stx` with amount "2000000" |
+| "What are trending pools?" | `execute_x402_endpoint` GET /api/pools/trending |
+| "Analyze my wallet" | `execute_x402_endpoint` POST /api/wallet/classify |
+| "Get latest news" | `execute_x402_endpoint` GET /api/news |
+| "Tell me a dad joke" | `execute_x402_endpoint` GET /api/ai/dad-joke with apiUrl="https://stx402.com" |
+| "Summarize this text" | `execute_x402_endpoint` POST /api/ai/summarize with apiUrl="https://stx402.com" |
+| "Generate a QR code" | `execute_x402_endpoint` POST /api/util/qr-generate with apiUrl="https://stx402.com" |
+| "Order pizza" | Not available - inform user |
+
+### Endpoint Categories
+
+**x402.biwas.xyz:**
+- News & Research, Security, Wallet Analysis
+- ALEX DEX, Zest Protocol, DeFi
+- Market Data, Pools, Tokens
+
+**stx402.com:**
+- AI Services (jokes, summarize, translate, TTS, image generation)
+- Stacks Blockchain (address conversion, tx decode, contract info)
+- Cryptography (SHA256, HMAC, etc.)
+- Storage (KV, SQL, Paste)
+- Utilities (QR codes, signature verification)
+- Registry, Links, Counters, Job Queue, Memory
+- Agent Registry & Reputation
