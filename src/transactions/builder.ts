@@ -1,0 +1,219 @@
+import {
+  makeSTXTokenTransfer,
+  makeContractCall,
+  makeContractDeploy,
+  broadcastTransaction,
+  ClarityValue,
+  PostConditionMode,
+  PostCondition,
+} from "@stacks/transactions";
+import { getStacksNetwork, getApiBaseUrl, type Network } from "../config/networks.js";
+
+export interface Account {
+  address: string;
+  privateKey: string;
+  network: Network;
+}
+
+export interface TransferResult {
+  txid: string;
+  rawTx: string;
+}
+
+export interface ContractCallOptions {
+  contractAddress: string;
+  contractName: string;
+  functionName: string;
+  functionArgs: ClarityValue[];
+  postConditionMode?: PostConditionMode;
+  postConditions?: PostCondition[];
+}
+
+export interface ContractDeployOptions {
+  contractName: string;
+  codeBody: string;
+}
+
+/**
+ * Transfer STX tokens to a recipient
+ */
+export async function transferStx(
+  account: Account,
+  recipient: string,
+  amount: bigint,
+  memo?: string
+): Promise<TransferResult> {
+  const networkName = getStacksNetwork(account.network);
+
+  const transaction = await makeSTXTokenTransfer({
+    recipient,
+    amount,
+    senderKey: account.privateKey,
+    network: networkName,
+    memo: memo || "",
+  });
+
+  const broadcastResponse = await broadcastTransaction({
+    transaction,
+    network: networkName,
+  });
+
+  if ("error" in broadcastResponse) {
+    throw new Error(
+      `Broadcast failed: ${broadcastResponse.error} - ${broadcastResponse.reason}`
+    );
+  }
+
+  return {
+    txid: broadcastResponse.txid,
+    rawTx: Buffer.from(transaction.serialize()).toString("hex"),
+  };
+}
+
+/**
+ * Call a smart contract function
+ */
+export async function callContract(
+  account: Account,
+  options: ContractCallOptions
+): Promise<TransferResult> {
+  const networkName = getStacksNetwork(account.network);
+
+  const transaction = await makeContractCall({
+    contractAddress: options.contractAddress,
+    contractName: options.contractName,
+    functionName: options.functionName,
+    functionArgs: options.functionArgs,
+    senderKey: account.privateKey,
+    network: networkName,
+    postConditionMode: options.postConditionMode || PostConditionMode.Deny,
+    postConditions: options.postConditions || [],
+  });
+
+  const broadcastResponse = await broadcastTransaction({
+    transaction,
+    network: networkName,
+  });
+
+  if ("error" in broadcastResponse) {
+    throw new Error(
+      `Broadcast failed: ${broadcastResponse.error} - ${broadcastResponse.reason}`
+    );
+  }
+
+  return {
+    txid: broadcastResponse.txid,
+    rawTx: Buffer.from(transaction.serialize()).toString("hex"),
+  };
+}
+
+/**
+ * Deploy a smart contract
+ */
+export async function deployContract(
+  account: Account,
+  options: ContractDeployOptions
+): Promise<TransferResult> {
+  const networkName = getStacksNetwork(account.network);
+
+  const transaction = await makeContractDeploy({
+    contractName: options.contractName,
+    codeBody: options.codeBody,
+    senderKey: account.privateKey,
+    network: networkName,
+  });
+
+  const broadcastResponse = await broadcastTransaction({
+    transaction,
+    network: networkName,
+  });
+
+  if ("error" in broadcastResponse) {
+    throw new Error(
+      `Broadcast failed: ${broadcastResponse.error} - ${broadcastResponse.reason}`
+    );
+  }
+
+  return {
+    txid: broadcastResponse.txid,
+    rawTx: Buffer.from(transaction.serialize()).toString("hex"),
+  };
+}
+
+/**
+ * Sign a transaction without broadcasting (for offline signing)
+ */
+export async function signStxTransfer(
+  account: Account,
+  recipient: string,
+  amount: bigint,
+  memo?: string
+): Promise<{ signedTx: string; txid: string }> {
+  const networkName = getStacksNetwork(account.network);
+
+  const transaction = await makeSTXTokenTransfer({
+    recipient,
+    amount,
+    senderKey: account.privateKey,
+    network: networkName,
+    memo: memo || "",
+  });
+
+  return {
+    signedTx: Buffer.from(transaction.serialize()).toString("hex"),
+    txid: transaction.txid(),
+  };
+}
+
+/**
+ * Sign a contract call without broadcasting
+ */
+export async function signContractCall(
+  account: Account,
+  options: ContractCallOptions
+): Promise<{ signedTx: string; txid: string }> {
+  const networkName = getStacksNetwork(account.network);
+
+  const transaction = await makeContractCall({
+    contractAddress: options.contractAddress,
+    contractName: options.contractName,
+    functionName: options.functionName,
+    functionArgs: options.functionArgs,
+    senderKey: account.privateKey,
+    network: networkName,
+    postConditionMode: options.postConditionMode || PostConditionMode.Deny,
+    postConditions: options.postConditions || [],
+  });
+
+  return {
+    signedTx: Buffer.from(transaction.serialize()).toString("hex"),
+    txid: transaction.txid(),
+  };
+}
+
+/**
+ * Broadcast a pre-signed transaction
+ */
+export async function broadcastSignedTransaction(
+  signedTx: string,
+  network: Network
+): Promise<{ txid: string }> {
+  const baseUrl = getApiBaseUrl(network);
+  const txBuffer = Buffer.from(signedTx, "hex");
+
+  const response = await fetch(`${baseUrl}/v2/transactions`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/octet-stream",
+    },
+    body: txBuffer,
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Broadcast failed: ${response.statusText} - ${errorText}`);
+  }
+
+  const txid = await response.text();
+  return { txid: txid.replace(/"/g, "") };
+}
