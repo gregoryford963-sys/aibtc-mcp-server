@@ -1,0 +1,180 @@
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { z } from "zod";
+import { createApiClient, API_URL } from "../services/x402.service.js";
+import {
+  ALL_ENDPOINTS,
+  searchEndpoints,
+  formatEndpointsTable,
+  getEndpointsBySource,
+  getCategories,
+} from "../endpoints/registry.js";
+import { createJsonResponse, createErrorResponse } from "../utils/index.js";
+
+export function registerEndpointTools(server: McpServer): void {
+  // List x402 endpoints
+  server.registerTool(
+    "list_x402_endpoints",
+    {
+      description: `List known x402 API endpoints from x402.biwas.xyz and stx402.com.
+
+The agent can:
+1. Execute x402 endpoints from these sources (paid API calls with automatic payment handling)
+2. Execute direct Stacks transactions (transfer STX, call contracts, deploy contracts)
+
+Sources:
+- x402.biwas.xyz: DeFi analytics, market data, wallet analysis, Zest/ALEX protocols
+- stx402.com: AI services, cryptography, storage, utilities, agent registry`,
+      inputSchema: {
+        source: z
+          .enum(["x402.biwas.xyz", "stx402.com", "all"])
+          .optional()
+          .default("all")
+          .describe("Filter by API source"),
+        category: z
+          .string()
+          .optional()
+          .describe("Filter by category (use without value to see available categories)"),
+        search: z
+          .string()
+          .optional()
+          .describe("Search endpoints by keyword (searches path, description, category)"),
+        showFreeOnly: z
+          .boolean()
+          .optional()
+          .describe("Only show free endpoints (no payment required)"),
+        showPaidOnly: z
+          .boolean()
+          .optional()
+          .describe("Only show paid endpoints (require x402 payment)"),
+      },
+    },
+    async ({ source, category, search, showFreeOnly, showPaidOnly }) => {
+      try {
+        let endpoints = ALL_ENDPOINTS;
+
+        if (source && source !== "all") {
+          endpoints = getEndpointsBySource(source);
+        }
+
+        if (showFreeOnly) {
+          endpoints = endpoints.filter((ep) => ep.cost === "FREE");
+        } else if (showPaidOnly) {
+          endpoints = endpoints.filter((ep) => ep.cost !== "FREE");
+        }
+
+        if (category) {
+          endpoints = endpoints.filter(
+            (ep) => ep.category.toLowerCase() === category.toLowerCase()
+          );
+        }
+
+        if (search) {
+          const searchResults = searchEndpoints(search);
+          endpoints = endpoints.filter((ep) => searchResults.includes(ep));
+        }
+
+        if (endpoints.length === 0) {
+          const categories = getCategories();
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: `No endpoints found matching your criteria.
+
+Available categories: ${categories.join(", ")}
+
+Sources: x402.biwas.xyz, stx402.com
+
+If you're looking to perform a direct blockchain action (transfer STX, call a contract), those are available via separate tools.`,
+              },
+            ],
+          };
+        }
+
+        const formatted = formatEndpointsTable(endpoints);
+        const sourceInfo =
+          source === "all"
+            ? "Sources: x402.biwas.xyz, stx402.com"
+            : `Source: ${source}`;
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: `# Available x402 Endpoints (${endpoints.length} total)\n\n${sourceInfo}\nDefault API: ${API_URL}\n${formatted}\n\n---\nUse execute_x402_endpoint to call any of these endpoints.`,
+            },
+          ],
+        };
+      } catch (error) {
+        return createErrorResponse(error);
+      }
+    }
+  );
+
+  // Execute x402 endpoint
+  server.registerTool(
+    "execute_x402_endpoint",
+    {
+      description: `Execute an x402 API endpoint. Payment is handled automatically.
+
+Supported sources:
+- x402.biwas.xyz (default): Use path like "/api/pools/trending"
+- stx402.com: Use apiUrl="https://stx402.com" with path like "/api/ai/dad-joke"
+
+Use list_x402_endpoints to discover available endpoints.`,
+      inputSchema: {
+        method: z
+          .enum(["GET", "POST", "PUT", "DELETE"])
+          .default("GET")
+          .describe("HTTP method"),
+        path: z.string().describe("API endpoint path (e.g., '/api/pools/trending')"),
+        apiUrl: z
+          .enum(["https://x402.biwas.xyz", "https://stx402.com"])
+          .optional()
+          .describe("API base URL. Defaults to configured API_URL (x402.biwas.xyz)."),
+        params: z
+          .record(z.string(), z.string())
+          .optional()
+          .describe("Query parameters for GET requests"),
+        data: z
+          .record(z.string(), z.unknown())
+          .optional()
+          .describe("Request body for POST/PUT requests"),
+      },
+    },
+    async ({ method, path, apiUrl, params, data }) => {
+      try {
+        const baseUrl = apiUrl || API_URL;
+        const api = await createApiClient(baseUrl);
+
+        const response = await api.request({
+          method,
+          url: path,
+          params,
+          data,
+        });
+
+        return createJsonResponse({
+          endpoint: `${method} ${baseUrl}${path}`,
+          response: response.data,
+        });
+      } catch (error) {
+        let message = "Unknown error";
+        if (error instanceof Error) {
+          message = error.message;
+        }
+        const axiosError = error as { response?: { status?: number; data?: unknown } };
+        if (axiosError.response) {
+          if (axiosError.response.status === 404) {
+            message = `Endpoint not found: ${path}. Use list_x402_endpoints to see available endpoints.`;
+          } else {
+            message = `HTTP ${axiosError.response.status}: ${JSON.stringify(axiosError.response.data)}`;
+          }
+        }
+        return {
+          content: [{ type: "text" as const, text: `Error: ${message}` }],
+          isError: true as const,
+        };
+      }
+    }
+  );
+}
