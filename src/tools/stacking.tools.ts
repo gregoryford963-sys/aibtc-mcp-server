@@ -62,35 +62,6 @@ export function registerStackingTools(server: McpServer): void {
     }
   );
 
-  // Get stacking rewards
-  server.registerTool(
-    "get_stacking_rewards",
-    {
-      description: "Get stacking rewards earned by an address.",
-      inputSchema: {
-        address: z
-          .string()
-          .optional()
-          .describe("Wallet address to check. Uses configured wallet if not provided."),
-      },
-    },
-    async ({ address }) => {
-      try {
-        const stackingService = getStackingService(NETWORK);
-        const walletAddress = address || (await getWalletAddress());
-        const rewards = await stackingService.getStackingRewards(walletAddress);
-
-        return createJsonResponse({
-          address: walletAddress,
-          network: NETWORK,
-          ...rewards,
-        });
-      } catch (error) {
-        return createErrorResponse(error);
-      }
-    }
-  );
-
   // Stack STX
   server.registerTool(
     "stack_stx",
@@ -169,27 +140,4 @@ Requires a Bitcoin address (hash) for receiving rewards.`,
     }
   );
 
-  // Get stacking pool info
-  server.registerTool(
-    "get_stacking_pool_info",
-    {
-      description: "Get information about a stacking pool.",
-      inputSchema: {
-        poolAddress: z.string().describe("Pool operator's Stacks address"),
-      },
-    },
-    async ({ poolAddress }) => {
-      try {
-        const stackingService = getStackingService(NETWORK);
-        const info = await stackingService.getPoolInfo(poolAddress);
-
-        return createJsonResponse({
-          network: NETWORK,
-          ...info,
-        });
-      } catch (error) {
-        return createErrorResponse(error);
-      }
-    }
-  );
 }

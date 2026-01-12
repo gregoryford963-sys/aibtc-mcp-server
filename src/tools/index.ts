@@ -6,7 +6,6 @@ import { registerContractTools } from "./contract.tools.js";
 import { registerSbtcTools } from "./sbtc.tools.js";
 import { registerTokenTools } from "./tokens.tools.js";
 import { registerNftTools } from "./nft.tools.js";
-import { registerDefiTools } from "./defi.tools.js";
 import { registerStackingTools } from "./stacking.tools.js";
 import { registerBnsTools } from "./bns.tools.js";
 import { registerQueryTools } from "./query.tools.js";
@@ -33,9 +32,6 @@ export function registerAllTools(server: McpServer): void {
 
   // NFTs (SIP-009)
   registerNftTools(server);
-
-  // DeFi
-  registerDefiTools(server);
 
   // Stacking / PoX
   registerStackingTools(server);

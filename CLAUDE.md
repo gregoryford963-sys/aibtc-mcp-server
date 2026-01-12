@@ -16,7 +16,7 @@ The agent supports two x402 API sources:
 
 | Source | URL | Endpoints |
 |--------|-----|-----------|
-| x402.biwas.xyz | https://x402.biwas.xyz | DeFi analytics, market data, wallet analysis, Zest/ALEX protocols |
+| x402.biwas.xyz | https://x402.biwas.xyz | DeFi analytics, market data, wallet analysis |
 | stx402.com | https://stx402.com | AI services, cryptography, storage, utilities, agent registry |
 
 ## Build Commands
@@ -27,6 +27,20 @@ npm run build     # Compile TypeScript to dist/
 npm run dev       # Run in development mode with tsx
 npm start         # Run compiled server
 ```
+
+## Code Principles
+
+**CRITICAL: Follow these principles when writing code in this repository:**
+
+1. **No Dummy Implementations** - Never write placeholder/stub code that returns fake data. If a feature can't be fully implemented, don't implement it at all. Remove the feature rather than shipping non-functional code.
+
+2. **No Defensive Programming with Fallback Dummies** - Do not catch errors and return default/dummy values. If an operation fails, let it fail. Don't hide failures behind fake success responses.
+
+3. **Real Implementation or Nothing** - Every function must do real work. If you can't make a real API call, contract call, or data fetch, don't write the function.
+
+4. **Delete Over Stub** - When removing functionality, delete it completely. Don't leave behind commented code, stub methods, or "TODO" implementations.
+
+5. **Errors Should Surface** - Let errors propagate to the user. Don't swallow exceptions or return fallback values that mask failures.
 
 ## Architecture
 
@@ -51,7 +65,7 @@ stx402-agent MCP Server (src/index.ts)
 - `src/index.ts` - MCP server with all tool definitions
 - `src/api.ts` - Axios client with x402-stacks payment interceptor (supports multiple API sources)
 - `src/wallet.ts` - Wallet operations and transaction signing using @stacks/transactions
-- `src/endpoints.ts` - Known x402 endpoint registry from both API sources
+- `src/endpoints/registry.ts` - Known x402 endpoint registry from both API sources
 - `src/services/bns.service.ts` - BNS name resolution (supports both V1 and V2)
 - `src/services/hiro-api.ts` - Hiro API client + BNS V2 API client
 
@@ -142,7 +156,6 @@ When a user asks for something:
 
 **x402.biwas.xyz:**
 - News & Research, Security, Wallet Analysis
-- ALEX DEX, Zest Protocol, DeFi
 - Market Data, Pools, Tokens
 
 **stx402.com:**

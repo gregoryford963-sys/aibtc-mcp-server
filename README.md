@@ -4,13 +4,12 @@ An MCP (Model Context Protocol) server that enables Claude to interact with the 
 
 ## Features
 
-- **50+ Tools** - Comprehensive Stacks blockchain operations
+- **40+ Tools** - Comprehensive Stacks blockchain operations
 - **sBTC Support** - Native Bitcoin on Stacks operations
 - **Token Operations** - SIP-010 fungible token transfers and queries
 - **NFT Support** - SIP-009 NFT holdings, transfers, and metadata
-- **DeFi Integration** - Swap quotes, liquidity pools, lending markets
-- **Stacking/PoX** - Stacking status, rewards, and delegation
-- **BNS Domains** - .btc domain lookups and management
+- **Stacking/PoX** - Stacking status and delegation
+- **BNS Domains** - .btc domain lookups and management (V1 + V2)
 - **x402 Payments** - Automatic payment handling for paid APIs
 - **Direct Transactions** - Transfer STX, call contracts, deploy smart contracts
 
@@ -49,7 +48,7 @@ Add to your Claude Code settings (`~/.claude.json`):
 }
 ```
 
-## Available Tools (53 total)
+## Available Tools (41 total)
 
 ### Wallet & Balance
 | Tool | Description |
@@ -68,9 +67,8 @@ Add to your Claude Code settings (`~/.claude.json`):
 |------|-------------|
 | `sbtc_get_balance` | Get sBTC balance for an address |
 | `sbtc_transfer` | Transfer sBTC to a recipient |
-| `sbtc_get_deposit_info` | Get BTC deposit address/instructions |
+| `sbtc_get_deposit_info` | Get BTC deposit instructions |
 | `sbtc_get_peg_info` | Get current peg ratio and TVL |
-| `sbtc_get_withdrawal_status` | Check withdrawal operation status |
 
 ### Token Operations (SIP-010)
 | Tool | Description |
@@ -91,27 +89,13 @@ Add to your Claude Code settings (`~/.claude.json`):
 | `get_collection_info` | Get NFT collection details |
 | `get_nft_history` | Get NFT transfer history |
 
-### DeFi Operations
-| Tool | Description |
-|------|-------------|
-| `get_swap_quote` | Get best swap route across DEXs |
-| `execute_swap` | Execute a token swap |
-| `get_pool_info` | Get liquidity pool details |
-| `get_pools_list` | List available liquidity pools |
-| `add_liquidity` | Add liquidity to a pool |
-| `remove_liquidity` | Remove liquidity from a pool |
-| `get_lending_markets` | List lending opportunities |
-| `get_defi_positions` | Get all DeFi positions for an address |
-
 ### Stacking / PoX
 | Tool | Description |
 |------|-------------|
 | `get_pox_info` | Get current PoX cycle info |
 | `get_stacking_status` | Check if address is stacking |
-| `get_stacking_rewards` | Get accumulated BTC rewards |
 | `stack_stx` | Lock STX for stacking |
 | `extend_stacking` | Extend stacking period |
-| `get_stacking_pool_info` | Get stacking pool details |
 
 ### BNS Domains (V1 + V2)
 | Tool | Description |
@@ -161,11 +145,6 @@ Add to your Claude Code settings (`~/.claude.json`):
 > "Send 2 STX to ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM"
 > "Transfer 0.001 sBTC to muneeb.btc"
 
-**DeFi operations:**
-> "Get a swap quote for 100 STX to sBTC"
-> "What are the best lending rates?"
-> "Show my DeFi positions"
-
 **NFTs:**
 > "What NFTs do I own?"
 > "Show metadata for this NFT collection"
@@ -178,7 +157,6 @@ Add to your Claude Code settings (`~/.claude.json`):
 **Stacking:**
 > "Am I currently stacking?"
 > "What's the current PoX cycle?"
-> "How much rewards have I earned?"
 
 **x402 endpoints:**
 > "Get trending liquidity pools"
@@ -190,8 +168,6 @@ Add to your Claude Code settings (`~/.claude.json`):
 Well-known tokens can be referenced by symbol:
 - **sBTC** - Native Bitcoin on Stacks
 - **USDCx** - USD Coin on Stacks
-- **ALEX** - ALEX DEX token
-- **DIKO** - Arkadiko governance token
 
 Or use any SIP-010 token by contract ID: `SP2X...::token-name`
 

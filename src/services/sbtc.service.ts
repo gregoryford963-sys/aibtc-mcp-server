@@ -91,20 +91,19 @@ export class SbtcService {
   }
 
   /**
-   * Get sBTC deposit information
+   * Get sBTC deposit instructions
+   * Note: sBTC deposits require interacting with the Bitcoin network directly
    */
   async getDepositInfo(): Promise<SbtcDepositInfo> {
-    // Note: sBTC deposit requires Bitcoin network interaction
-    // This returns placeholder info - actual implementation would query sBTC bridge API
     return {
-      depositAddress: "Deposit requires sBTC bridge integration",
+      depositAddress: "Use sBTC bridge at https://bridge.stx.eco",
       minDeposit: "0.0001 BTC",
       maxDeposit: "No limit",
       instructions: [
-        "1. sBTC deposits are made from Bitcoin network",
-        "2. Send BTC to the sBTC deposit address",
-        "3. Include your Stacks address in the OP_RETURN",
-        "4. Wait for 3 Bitcoin block confirmations",
+        "1. Visit the sBTC bridge at https://bridge.stx.eco",
+        "2. Connect your Bitcoin and Stacks wallets",
+        "3. Follow the bridge UI to deposit BTC",
+        "4. Wait for Bitcoin block confirmations",
         "5. sBTC will be minted to your Stacks address",
       ],
     };
@@ -115,45 +114,20 @@ export class SbtcService {
    */
   async getPegInfo(): Promise<SbtcPegInfo> {
     const sbtcContract = this.contracts.SBTC_TOKEN;
+    const metadata = await this.hiro.getTokenMetadata(sbtcContract);
 
-    try {
-      // Try to get total supply from contract
-      const metadata = await this.hiro.getTokenMetadata(sbtcContract);
+    const totalSupply = metadata?.total_supply || "0";
+    const totalSupplySats = totalSupply;
+    const totalSupplyBtc = (BigInt(totalSupply) / BigInt(100_000_000)).toString();
 
-      const totalSupply = metadata?.total_supply || "0";
-      const totalSupplySats = totalSupply;
-      const totalSupplyBtc = (BigInt(totalSupply) / BigInt(100_000_000)).toString();
-
-      return {
-        totalSupply,
-        totalSupplySats,
-        totalSupplyBtc,
-        pegRatio: "1:1",
-      };
-    } catch {
-      return {
-        totalSupply: "0",
-        totalSupplySats: "0",
-        totalSupplyBtc: "0",
-        pegRatio: "1:1",
-      };
-    }
-  }
-
-  /**
-   * Get sBTC withdrawal status
-   * Note: This is a placeholder - actual implementation would query sBTC bridge
-   */
-  async getWithdrawalStatus(operationId: string): Promise<{
-    status: string;
-    btcTxId?: string;
-    confirmations?: number;
-  }> {
-    // sBTC withdrawals require bridge API integration
     return {
-      status: "Withdrawal status requires sBTC bridge API integration",
+      totalSupply,
+      totalSupplySats,
+      totalSupplyBtc,
+      pegRatio: "1:1",
     };
   }
+
 }
 
 // ============================================================================

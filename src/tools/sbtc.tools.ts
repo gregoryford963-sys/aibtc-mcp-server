@@ -122,28 +122,4 @@ Example: To send 0.001 sBTC, use amount "100000" (satoshis).`,
     }
   );
 
-  // Get sBTC withdrawal status
-  server.registerTool(
-    "sbtc_get_withdrawal_status",
-    {
-      description: "Check the status of an sBTC withdrawal operation.",
-      inputSchema: {
-        operationId: z.string().describe("The withdrawal operation ID"),
-      },
-    },
-    async ({ operationId }) => {
-      try {
-        const sbtcService = getSbtcService(NETWORK);
-        const status = await sbtcService.getWithdrawalStatus(operationId);
-
-        return createJsonResponse({
-          operationId,
-          network: NETWORK,
-          ...status,
-        });
-      } catch (error) {
-        return createErrorResponse(error);
-      }
-    }
-  );
 }

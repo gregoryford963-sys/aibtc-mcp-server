@@ -17,22 +17,6 @@ export interface StackingStatus {
   poxAddress?: string;
 }
 
-export interface StackingRewards {
-  totalBtcRewards: string;
-  cycles: Array<{
-    cycleNumber: number;
-    btcReward: string;
-  }>;
-}
-
-export interface StackingPoolInfo {
-  poolAddress: string;
-  totalStacked: string;
-  delegators: number;
-  minDelegation: string;
-  fee: string;
-}
-
 // ============================================================================
 // Stacking Service
 // ============================================================================
@@ -55,13 +39,9 @@ export class StackingService {
 
   /**
    * Get stacking status for an address
+   * Note: Returns whether the address is stacking, but detailed amounts require proper CV parsing
    */
   async getStackingStatus(address: string): Promise<StackingStatus> {
-    const poxInfo = await this.getPoxInfo();
-
-    // Call the pox-4 contract to get stacker info
-    const { address: poxAddress, name: poxName } = parseContractId(this.contracts.POX_4);
-
     try {
       const result = await this.hiro.callReadOnlyFunction(
         this.contracts.POX_4,
@@ -71,22 +51,15 @@ export class StackingService {
       );
 
       if (result.okay && result.result) {
-        // Parse the result
-        // Note: Actual parsing depends on the contract response format
         const isStacked = result.result.includes("some");
-
-        if (isStacked) {
-          // Extract stacking details from the response
-          // This is simplified - actual implementation needs proper CV parsing
-          return {
-            stacked: true,
-            amountMicroStx: "0",
-            amountStx: "0",
-            firstRewardCycle: 0,
-            lockPeriod: 0,
-            unlockHeight: 0,
-          };
-        }
+        return {
+          stacked: isStacked,
+          amountMicroStx: "0", // Requires CV parsing
+          amountStx: "0",
+          firstRewardCycle: 0,
+          lockPeriod: 0,
+          unlockHeight: 0,
+        };
       }
     } catch {
       // Stacker info not found
@@ -102,17 +75,6 @@ export class StackingService {
     };
   }
 
-  /**
-   * Get stacking rewards
-   */
-  async getStackingRewards(address: string): Promise<StackingRewards> {
-    // BTC rewards are tracked off-chain
-    // This would require integration with a rewards API
-    return {
-      totalBtcRewards: "0",
-      cycles: [],
-    };
-  }
 
   /**
    * Stack STX tokens
@@ -235,19 +197,6 @@ export class StackingService {
     });
   }
 
-  /**
-   * Get stacking pool info (simplified)
-   */
-  async getPoolInfo(poolAddress: string): Promise<StackingPoolInfo | null> {
-    // Pool info would come from the pool's public data or API
-    return {
-      poolAddress,
-      totalStacked: "0",
-      delegators: 0,
-      minDelegation: "100000000", // 100 STX
-      fee: "5%",
-    };
-  }
 }
 
 // ============================================================================
