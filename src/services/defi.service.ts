@@ -530,7 +530,16 @@ function extractAssetName(contractId: string): string {
 function extractUintValue(decoded: unknown): string {
   if (typeof decoded === "object" && decoded !== null) {
     const obj = decoded as Record<string, unknown>;
-    // Handle ok/err response
+
+    // Check if this is an error response (success: false)
+    if ("success" in obj && obj.success === false) {
+      const errorCode = obj.value && typeof obj.value === "object"
+        ? (obj.value as Record<string, unknown>).value
+        : obj.value;
+      throw new Error(`Contract returned error: ${errorCode}`);
+    }
+
+    // Handle ok response
     if ("value" in obj && typeof obj.value === "object" && obj.value !== null) {
       const inner = obj.value as Record<string, unknown>;
       if ("value" in inner) {
