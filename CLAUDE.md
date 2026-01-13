@@ -65,6 +65,7 @@ stx402-agent MCP Server (src/index.ts)
 - `src/index.ts` - MCP server with all tool definitions
 - `src/api.ts` - Axios client with x402-stacks payment interceptor (supports multiple API sources)
 - `src/wallet.ts` - Wallet operations and transaction signing using @stacks/transactions
+- `src/services/wallet-manager.ts` - Managed wallet creation, encryption, and session management
 - `src/endpoints/registry.ts` - Known x402 endpoint registry from both API sources
 - `src/services/bns.service.ts` - BNS name resolution (supports both V1 and V2)
 - `src/services/hiro-api.ts` - Hiro API client + BNS V2 API client
@@ -92,9 +93,21 @@ BNS tools automatically check V2 first for `.btc` names, falling back to V1 for 
 ## Configuration
 
 Set environment variables in `.env`:
-- `CLIENT_MNEMONIC` - 24-word Stacks wallet mnemonic (required)
+- `CLIENT_MNEMONIC` - 24-word Stacks wallet mnemonic (optional - can use managed wallets instead)
 - `NETWORK` - "mainnet" or "testnet" (default: testnet)
 - `API_URL` - Default x402 API base URL (default: https://x402.biwas.xyz)
+
+### Wallet Storage
+
+Managed wallets are stored encrypted in `~/.stx402/`:
+```
+~/.stx402/
+├── wallets.json       # Wallet index (metadata only)
+├── config.json        # Active wallet, settings
+└── wallets/
+    └── [wallet-id]/
+        └── keystore.json  # Encrypted mnemonic (AES-256-GCM)
+```
 
 ## Adding to Claude Code
 
@@ -106,13 +119,16 @@ Add to your Claude Code MCP settings:
       "command": "node",
       "args": ["/path/to/stx402-agent/dist/index.js"],
       "env": {
-        "CLIENT_MNEMONIC": "your mnemonic here",
         "NETWORK": "testnet"
       }
     }
   }
 }
 ```
+
+**Note:** `CLIENT_MNEMONIC` is optional. Users can either:
+1. **Managed wallets (recommended)**: Use `wallet_create` or `wallet_import` to generate/import wallets with password protection
+2. **Environment mnemonic**: Set `CLIENT_MNEMONIC` in env (for power users)
 
 ## Available Tools
 
@@ -122,6 +138,17 @@ Add to your Claude Code MCP settings:
 ### Wallet & Balance
 - `get_wallet_info` - Get configured wallet address, network, and API URL
 - `get_stx_balance` - Get STX balance for any address
+
+### Wallet Management
+- `wallet_create` - Generate a new wallet with BIP39 mnemonic (encrypted locally)
+- `wallet_import` - Import an existing wallet from mnemonic
+- `wallet_unlock` - Unlock a wallet for transactions (requires password)
+- `wallet_lock` - Lock the wallet (clear from memory)
+- `wallet_list` - List all available wallets
+- `wallet_switch` - Switch active wallet
+- `wallet_delete` - Permanently delete a wallet
+- `wallet_export` - Export mnemonic (with security warning)
+- `wallet_status` - Get current wallet/session status
 
 ### Direct Stacks Transactions
 - `transfer_stx` - Transfer STX tokens to a recipient (signs and broadcasts)
