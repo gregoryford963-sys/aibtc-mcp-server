@@ -18,24 +18,129 @@ export const MAINNET_CONTRACTS = {
   // Stacking
   POX_4: "SP000000000000000000002Q6VF78.pox-4",
 
-  // ALEX DEX
+  // ALEX DEX (SDK handles most operations, but we need pool contract for queries)
   ALEX_AMM_POOL: "SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9.amm-swap-pool-v1-1",
-  ALEX_SWAP_HELPER: "SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9.swap-helper-v1-03",
-  ALEX_SWAP_BRIDGED: "SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9.swap-helper-bridged",
-  ALEX_VAULT: "SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9.alex-vault",
-  ALEX_TOKEN_NATIVE: "SP102V8P0F7JX67ARQ77WEA3D3CFB5XW39REDT0AM.token-alex", // Native ALEX governance token
-  ALEX_TOKEN_AMM: "SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9.token-alex", // Wrapped ALEX for AMM pools
+  ALEX_TOKEN: "SP102V8P0F7JX67ARQ77WEA3D3CFB5XW39REDT0AM.token-alex",
   ALEX_WSTX: "SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9.token-wstx-v2",
 
   // Zest Protocol
   ZEST_POOL_BORROW: "SP2VCQJGH7PHP2DJK7Z0V48AGBHQAW3R3ZW1QF4N.pool-borrow-v2-3",
-  ZEST_BORROW_HELPER: "SP2VCQJGH7PHP2DJK7Z0V48AGBHQAW3R3ZW1QF4N.borrow-helper-v2-1-5",
   ZEST_POOL_RESERVE: "SP2VCQJGH7PHP2DJK7Z0V48AGBHQAW3R3ZW1QF4N.pool-0-reserve",
-
-  // Zest Supported Assets
-  STSTX: "SP4SZE494VC2YC5JYG7AYFQ44F5Q4PYV7DVMDPBG.ststx-token",
-  AEUSDC: "SP3Y2ZSH8P7D50B0VBTSX11S7XSG24M1VB9YFQA4K.token-aeusdc",
+  ZEST_FEES_CALCULATOR: "SM3VDXK3WZZSA84XXFKAFAF15NNZX32CTSG82JFQ4.fees-calculator",
 } as const;
+
+/**
+ * Zest Protocol asset configuration
+ * Each asset has: token, lpToken, oracle, decimals, symbol
+ */
+export interface ZestAssetConfig {
+  token: string;
+  lpToken: string;
+  oracle: string;
+  decimals: number;
+  symbol: string;
+  name: string;
+}
+
+export const ZEST_ASSETS: Record<string, ZestAssetConfig> = {
+  sBTC: {
+    token: "SM3VDXK3WZZSA84XXFKAFAF15NNZX32CTSG82JFQ4.sbtc-token",
+    lpToken: "SP2VCQJGH7PHP2DJK7Z0V48AGBHQAW3R3ZW1QF4N.zsbtc-v2-0",
+    oracle: "SP2VCQJGH7PHP2DJK7Z0V48AGBHQAW3R3ZW1QF4N.stx-btc-oracle-v1-4",
+    decimals: 8,
+    symbol: "sBTC",
+    name: "sBTC",
+  },
+  aeUSDC: {
+    token: "SP3Y2ZSH8P7D50B0VBTSX11S7XSG24M1VB9YFQA4K.token-aeusdc",
+    lpToken: "SP2VCQJGH7PHP2DJK7Z0V48AGBHQAW3R3ZW1QF4N.zaeusdc-v2-0",
+    oracle: "SP2VCQJGH7PHP2DJK7Z0V48AGBHQAW3R3ZW1QF4N.aeusdc-oracle-v1-0",
+    decimals: 6,
+    symbol: "aeUSDC",
+    name: "Aave USDC",
+  },
+  USDH: {
+    token: "SPN5AKG35QZSK2M8GAMR4AFX45659RJHDW353HSG.usdh-token-v1",
+    lpToken: "SP2VCQJGH7PHP2DJK7Z0V48AGBHQAW3R3ZW1QF4N.zusdh-v2-0",
+    oracle: "SP2VCQJGH7PHP2DJK7Z0V48AGBHQAW3R3ZW1QF4N.usdh-oracle-v1-0",
+    decimals: 8,
+    symbol: "USDH",
+    name: "USDH Stablecoin",
+  },
+  stSTX: {
+    token: "SP4SZE494VC2YC5JYG7AYFQ44F5Q4PYV7DVMDPBG.ststx-token",
+    lpToken: "SP2VCQJGH7PHP2DJK7Z0V48AGBHQAW3R3ZW1QF4N.zststx-v2-0",
+    oracle: "SP2VCQJGH7PHP2DJK7Z0V48AGBHQAW3R3ZW1QF4N.stx-btc-oracle-v1-4",
+    decimals: 6,
+    symbol: "stSTX",
+    name: "Stacked STX",
+  },
+  wSTX: {
+    token: "SP2VCQJGH7PHP2DJK7Z0V48AGBHQAW3R3ZW1QF4N.wstx",
+    lpToken: "SP2VCQJGH7PHP2DJK7Z0V48AGBHQAW3R3ZW1QF4N.zwstx-v2-0",
+    oracle: "SP2VCQJGH7PHP2DJK7Z0V48AGBHQAW3R3ZW1QF4N.stx-btc-oracle-v1-4",
+    decimals: 6,
+    symbol: "wSTX",
+    name: "Wrapped STX",
+  },
+  sUSDT: {
+    token: "SP2XD7417HGPRTREMKF748VNEQPDRR0RMANB7X1NK.token-susdt",
+    lpToken: "SP2VCQJGH7PHP2DJK7Z0V48AGBHQAW3R3ZW1QF4N.zsusdt-v2-0",
+    oracle: "SP2VCQJGH7PHP2DJK7Z0V48AGBHQAW3R3ZW1QF4N.susdt-oracle-v1-0",
+    decimals: 6,
+    symbol: "sUSDT",
+    name: "Stacks USDT",
+  },
+  USDA: {
+    token: "SP2C2YFP12AJZB4MABJBAJ55XECVS7E4PMMZ89YZR.usda-token",
+    lpToken: "SP2VCQJGH7PHP2DJK7Z0V48AGBHQAW3R3ZW1QF4N.zusda-v2-0",
+    oracle: "SP2VCQJGH7PHP2DJK7Z0V48AGBHQAW3R3ZW1QF4N.usda-oracle-v1-1",
+    decimals: 6,
+    symbol: "USDA",
+    name: "USDA Stablecoin",
+  },
+  DIKO: {
+    token: "SP2C2YFP12AJZB4MABJBAJ55XECVS7E4PMMZ89YZR.arkadiko-token",
+    lpToken: "SP2VCQJGH7PHP2DJK7Z0V48AGBHQAW3R3ZW1QF4N.zdiko-v2-0",
+    oracle: "SP2VCQJGH7PHP2DJK7Z0V48AGBHQAW3R3ZW1QF4N.diko-oracle-v1-1",
+    decimals: 6,
+    symbol: "DIKO",
+    name: "Arkadiko Token",
+  },
+  ALEX: {
+    token: "SP102V8P0F7JX67ARQ77WEA3D3CFB5XW39REDT0AM.token-alex",
+    lpToken: "SP2VCQJGH7PHP2DJK7Z0V48AGBHQAW3R3ZW1QF4N.zalex-v2-0",
+    oracle: "SP2VCQJGH7PHP2DJK7Z0V48AGBHQAW3R3ZW1QF4N.alex-oracle-v1-1",
+    decimals: 8,
+    symbol: "ALEX",
+    name: "ALEX Token",
+  },
+  "stSTX-BTC": {
+    token: "SP4SZE494VC2YC5JYG7AYFQ44F5Q4PYV7DVMDPBG.ststxbtc-token-v2",
+    lpToken: "SP2VCQJGH7PHP2DJK7Z0V48AGBHQAW3R3ZW1QF4N.zststxbtc-v2_v2-0",
+    oracle: "SP2VCQJGH7PHP2DJK7Z0V48AGBHQAW3R3ZW1QF4N.stx-btc-oracle-v1-4",
+    decimals: 6,
+    symbol: "stSTX-BTC",
+    name: "Stacked STX BTC",
+  },
+};
+
+/**
+ * Ordered list of Zest assets for building the assets-list parameter
+ * Order matters for contract calls
+ */
+export const ZEST_ASSETS_LIST: ZestAssetConfig[] = [
+  ZEST_ASSETS.stSTX,
+  ZEST_ASSETS.aeUSDC,
+  ZEST_ASSETS.wSTX,
+  ZEST_ASSETS.DIKO,
+  ZEST_ASSETS.USDH,
+  ZEST_ASSETS.sUSDT,
+  ZEST_ASSETS.USDA,
+  ZEST_ASSETS.sBTC,
+  ZEST_ASSETS.ALEX,
+  ZEST_ASSETS["stSTX-BTC"],
+];
 
 /**
  * Known contract addresses for testnet
@@ -83,7 +188,7 @@ export const WELL_KNOWN_TOKENS = {
     STX: "native",
     sBTC: MAINNET_CONTRACTS.SBTC_TOKEN,
     USDCx: MAINNET_CONTRACTS.USDCX,
-    ALEX: MAINNET_CONTRACTS.ALEX_TOKEN_NATIVE,
+    ALEX: MAINNET_CONTRACTS.ALEX_TOKEN,
     wSTX: MAINNET_CONTRACTS.ALEX_WSTX,
   },
   testnet: {
@@ -95,14 +200,12 @@ export const WELL_KNOWN_TOKENS = {
 
 /**
  * Get ALEX DEX contract addresses for the network
+ * Note: Most ALEX operations use the alex-sdk, but we need the pool contract for queries
  */
 export function getAlexContracts(network: Network) {
   if (network === "mainnet") {
     return {
       ammPool: MAINNET_CONTRACTS.ALEX_AMM_POOL,
-      swapHelper: MAINNET_CONTRACTS.ALEX_SWAP_HELPER,
-      vault: MAINNET_CONTRACTS.ALEX_VAULT,
-      wstx: MAINNET_CONTRACTS.ALEX_WSTX,
     };
   }
   // ALEX is mainnet-only currently
@@ -116,8 +219,8 @@ export function getZestContracts(network: Network) {
   if (network === "mainnet") {
     return {
       poolBorrow: MAINNET_CONTRACTS.ZEST_POOL_BORROW,
-      borrowHelper: MAINNET_CONTRACTS.ZEST_BORROW_HELPER,
       poolReserve: MAINNET_CONTRACTS.ZEST_POOL_RESERVE,
+      feesCalculator: MAINNET_CONTRACTS.ZEST_FEES_CALCULATOR,
     };
   }
   // Zest is mainnet-only currently
