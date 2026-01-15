@@ -67,6 +67,7 @@ stx402-agent MCP Server (src/index.ts)
 - `src/wallet.ts` - Wallet operations and transaction signing using @stacks/transactions
 - `src/services/wallet-manager.ts` - Managed wallet creation, encryption, and session management
 - `src/services/defi.service.ts` - ALEX DEX (via alex-sdk) and Zest Protocol integrations
+- `src/services/bitflow.service.ts` - Bitflow DEX integration (via @bitflowlabs/core-sdk)
 - `src/endpoints/registry.ts` - Known x402 endpoint registry from both API sources
 - `src/services/bns.service.ts` - BNS name resolution (supports both V1 and V2)
 - `src/services/hiro-api.ts` - Hiro API client + BNS V2 API client
@@ -206,6 +207,54 @@ Tools:
 
 All Zest tools accept asset symbols (e.g., 'stSTX', 'aeUSDC') or full contract IDs.
 
+### DeFi - Bitflow DEX (Mainnet Only)
+
+Uses the official `@bitflowlabs/core-sdk` for swap operations. Bitflow is a DEX aggregator that routes trades across multiple liquidity sources for best prices.
+
+**Environment Variables:**
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `BITFLOW_API_KEY` | For SDK features | Bitflow API key (contact Bitflow team to obtain) |
+| `BITFLOW_API_HOST` | For SDK features | Bitflow API host URL |
+| `BITFLOW_READONLY_API_HOST` | Optional | Read-only API host (default: https://api.hiro.so) |
+| `BITFLOW_KEEPER_API_KEY` | For Keeper features | Keeper automation API key |
+| `BITFLOW_KEEPER_API_HOST` | For Keeper features | Keeper API host URL |
+
+**Contract Addresses:**
+| Network | Primary | XYK Pools |
+|---------|---------|-----------|
+| Mainnet | `SPQC38PW542EQJ5M11CR25P7BS1CA6QT4TBXGB3M` | `SM1793C4R5PZ4NS4VQ4WMP7SKKYVH8JZEWSZ9HCCR` |
+| Testnet | `STRP7MYBHSMFH5EGN3HGX6KNQ7QBHVTBPF1669DW` | N/A |
+
+**Tools (Public - No API Key):**
+- `bitflow_get_ticker` - Get market data for all trading pairs (prices, volumes, liquidity)
+
+**Tools (Requires BITFLOW_API_KEY):**
+- `bitflow_get_tokens` - List all available tokens for swapping
+- `bitflow_get_swap_targets` - Get possible swap destinations for a token
+- `bitflow_get_quote` - Get swap quote with expected output
+- `bitflow_get_routes` - Get all available swap routes between tokens
+- `bitflow_swap` - Execute a token swap
+
+**Tools (Requires BITFLOW_KEEPER_API_KEY):**
+- `bitflow_get_keeper_contract` - Get or create Keeper contract for automated swaps
+- `bitflow_create_order` - Create automated swap order
+- `bitflow_get_order` - Get order details
+- `bitflow_cancel_order` - Cancel pending order
+- `bitflow_get_keeper_user` - Get user's Keeper info and orders
+
+**Keeper Action Types:**
+- `SWAP_XYK_SWAP_HELPER` - XYK pool swap
+- `SWAP_XYK_STABLESWAP_SWAP_HELPER` - Combined XYK + StableSwap
+- `SWAP_STABLESWAP_SWAP_HELPER` - StableSwap only
+
+**TODO - Bitflow API Key Integration:**
+- [ ] Contact Bitflow team via Discord to request API keys
+- [ ] Set `BITFLOW_API_KEY` and `BITFLOW_API_HOST` environment variables
+- [ ] Test SDK features (quotes, tokens, swaps)
+- [ ] Optionally configure Keeper API keys for automation features
+- [ ] Move API keys to Cloudflare Worker proxy for secure npm distribution
+
 ## Agent Behavior Guidelines
 
 When a user asks for something:
@@ -227,6 +276,9 @@ When a user asks for something:
 | "Supply 1000 stSTX to Zest" | `zest_supply` with asset="stSTX" |
 | "Borrow 100 aeUSDC from Zest" | `zest_borrow` with asset="aeUSDC" |
 | "Check my Zest position" | `zest_get_position` for supplied/borrowed |
+| "Get Bitflow market data" | `bitflow_get_ticker` (no API key required) |
+| "Swap tokens on Bitflow" | `bitflow_swap` with tokenX and tokenY contract IDs |
+| "Get a quote on Bitflow" | `bitflow_get_quote` for expected output |
 | "Tell me a dad joke" | `execute_x402_endpoint` with url="https://stx402.com/api/ai/dad-joke" |
 
 ### Endpoint Categories
