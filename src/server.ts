@@ -12,10 +12,8 @@
  * - All 54 tools available
  * - Per-user wallet isolation via API key
  * - Encrypted wallet storage (AES-256-GCM + Scrypt)
- * - Works with Bun runtime
+ * - Pure Bun runtime (no external web framework)
  */
-import { Hono } from "hono";
-import { cors } from "hono/cors";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 
@@ -35,40 +33,108 @@ registerAllTools(server);
 // Create a stateless transport
 const transport = new WebStandardStreamableHTTPServerTransport();
 
-// Create the Hono app
-const app = new Hono();
+// CORS headers for MCP clients
+const CORS_HEADERS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
+  "Access-Control-Allow-Headers":
+    "Content-Type, mcp-session-id, Last-Event-ID, mcp-protocol-version, X-API-Key, Authorization",
+  "Access-Control-Expose-Headers": "mcp-session-id, mcp-protocol-version",
+};
 
-// CORS configuration for MCP clients
-app.use(
-  "*",
-  cors({
-    origin: "*",
-    allowMethods: ["GET", "POST", "DELETE", "OPTIONS"],
-    allowHeaders: [
-      "Content-Type",
-      "mcp-session-id",
-      "Last-Event-ID",
-      "mcp-protocol-version",
-      "X-API-Key",
-      "Authorization",
-    ],
-    exposeHeaders: ["mcp-session-id", "mcp-protocol-version"],
-  })
-);
+// UUID validation regex
+const UUID_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-// Health check endpoint
-app.get("/health", (c) =>
-  c.json({
-    status: "ok",
-    version: "3.0.0",
-    network: NETWORK,
-    apiUrl: API_URL,
-  })
-);
+/**
+ * Handle CORS preflight requests
+ */
+function handleCors(req: Request): Response | null {
+  if (req.method === "OPTIONS") {
+    return new Response(null, { status: 204, headers: CORS_HEADERS });
+  }
+  return null;
+}
 
-// Landing page
-app.get("/", (c) => {
-  const html = `<!DOCTYPE html>
+/**
+ * Add CORS headers to response
+ */
+function withCors(response: Response): Response {
+  const newHeaders = new Headers(response.headers);
+  Object.entries(CORS_HEADERS).forEach(([key, value]) => {
+    newHeaders.set(key, value);
+  });
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers: newHeaders,
+  });
+}
+
+/**
+ * JSON response helper
+ */
+function json(data: unknown, status = 200): Response {
+  return withCors(
+    new Response(JSON.stringify(data), {
+      status,
+      headers: { "Content-Type": "application/json" },
+    })
+  );
+}
+
+/**
+ * HTML response helper
+ */
+function html(content: string, status = 200): Response {
+  return withCors(
+    new Response(content, {
+      status,
+      headers: { "Content-Type": "text/html; charset=utf-8" },
+    })
+  );
+}
+
+/**
+ * Validate API key and set user context
+ */
+function validateApiKey(req: Request): Response | null {
+  const apiKey =
+    req.headers.get("X-API-Key") ||
+    req.headers.get("Authorization")?.replace("Bearer ", "");
+
+  if (!apiKey) {
+    return json(
+      {
+        error: "Missing API Key",
+        message:
+          "Please provide your API key via X-API-Key header or Authorization: Bearer <key>",
+        help: "Visit the root URL to generate an API key",
+      },
+      401
+    );
+  }
+
+  if (!UUID_REGEX.test(apiKey)) {
+    return json(
+      {
+        error: "Invalid API Key format",
+        message: "API key must be a valid UUID",
+      },
+      401
+    );
+  }
+
+  // Set user context for this request
+  setUserContext(apiKey);
+  return null;
+}
+
+/**
+ * Generate landing page HTML
+ */
+function getLandingPage(baseUrl: string): string {
+  return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -149,61 +215,61 @@ app.get("/", (c) => {
 </head>
 <body>
   <div class="container">
-    <h1>🔥 stx402-agent</h1>
+    <h1>stx402-agent</h1>
     <p class="subtitle">Remote MCP Server for Stacks Blockchain & x402 Payments</p>
 
     <div class="card">
-      <h2>🔑 Step 1: Generate Your API Key</h2>
+      <h2>Step 1: Generate Your API Key</h2>
       <p>Your API key identifies your wallet storage. Keep it safe!</p>
       <div id="key-display" class="api-key" style="margin: 1rem 0; display: none;"></div>
       <button class="btn" onclick="generateKey()">Generate New API Key</button>
       <p style="margin-top: 1rem; color: #9ca3af; font-size: 0.85rem;">
-        ⚠️ Save this key! It's generated locally and we don't store it.
+        Save this key! It's generated locally and we don't store it.
       </p>
     </div>
 
     <div class="card">
-      <h2>⚡ Step 2: Connect Claude Code</h2>
+      <h2>Step 2: Connect Claude Code</h2>
       <p>Run this command in your terminal:</p>
-      <pre><code>claude mcp add --transport http stx402 ${c.req.url.replace(/\/$/, "")}/mcp \\
+      <pre><code>claude mcp add --transport http stx402 ${baseUrl}/mcp \\
   --header "X-API-Key: YOUR_API_KEY"</code></pre>
     </div>
 
     <div class="card">
-      <h2>🚀 Features</h2>
+      <h2>Features</h2>
       <div class="features">
         <div class="feature">
-          <h3>💰 Wallet Management</h3>
+          <h3>Wallet Management</h3>
           <p>Create, import, and manage encrypted wallets</p>
         </div>
         <div class="feature">
-          <h3>💸 STX Transfers</h3>
+          <h3>STX Transfers</h3>
           <p>Send STX, tokens, and NFTs</p>
         </div>
         <div class="feature">
-          <h3>📊 DeFi</h3>
+          <h3>DeFi</h3>
           <p>ALEX DEX swaps, Zest Protocol lending</p>
         </div>
         <div class="feature">
-          <h3>🔗 x402 APIs</h3>
+          <h3>x402 APIs</h3>
           <p>Paid API calls with automatic payment</p>
         </div>
         <div class="feature">
-          <h3>📜 Smart Contracts</h3>
+          <h3>Smart Contracts</h3>
           <p>Deploy and call Clarity contracts</p>
         </div>
         <div class="feature">
-          <h3>🔐 Secure</h3>
+          <h3>Secure</h3>
           <p>AES-256-GCM encrypted wallet storage</p>
         </div>
       </div>
     </div>
 
     <div class="card">
-      <h2>📚 Documentation</h2>
+      <h2>Documentation</h2>
       <p>
-        <a href="https://github.com/biwasxyz/stx402-agent" style="color: #f97316;">GitHub Repository</a> •
-        <a href="${c.req.url.replace(/\/$/, "")}/health" style="color: #f97316;">Health Check</a>
+        <a href="https://github.com/biwasxyz/stx402-agent" style="color: #f97316;">GitHub Repository</a> |
+        <a href="${baseUrl}/health" style="color: #f97316;">Health Check</a>
       </p>
     </div>
   </div>
@@ -221,63 +287,65 @@ app.get("/", (c) => {
   </script>
 </body>
 </html>`;
-  return c.html(html);
-});
+}
 
-// API Key validation middleware for MCP endpoint
-app.use("/mcp", async (c, next) => {
-  const apiKey =
-    c.req.header("X-API-Key") ||
-    c.req.header("Authorization")?.replace("Bearer ", "");
+/**
+ * Main request handler
+ */
+async function handleRequest(req: Request): Promise<Response> {
+  const url = new URL(req.url);
+  const path = url.pathname;
 
-  if (!apiKey) {
-    return c.json(
-      {
-        error: "Missing API Key",
-        message:
-          "Please provide your API key via X-API-Key header or Authorization: Bearer <key>",
-        help: "Visit the root URL to generate an API key",
-      },
-      401
-    );
+  // Handle CORS preflight
+  const corsResponse = handleCors(req);
+  if (corsResponse) return corsResponse;
+
+  // Route: Health check
+  if (path === "/health") {
+    return json({
+      status: "ok",
+      version: "3.0.0",
+      network: NETWORK,
+      apiUrl: API_URL,
+    });
   }
 
-  // Validate API key format (UUID)
-  const uuidRegex =
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-  if (!uuidRegex.test(apiKey)) {
-    return c.json(
-      {
-        error: "Invalid API Key format",
-        message: "API key must be a valid UUID",
-      },
-      401
-    );
+  // Route: Landing page
+  if (path === "/" && req.method === "GET") {
+    const baseUrl = `${url.protocol}//${url.host}`;
+    return html(getLandingPage(baseUrl));
   }
 
-  // Set user context for this request
-  setUserContext(apiKey);
+  // Route: MCP endpoint
+  if (path === "/mcp") {
+    // Validate API key
+    const authError = validateApiKey(req);
+    if (authError) return authError;
 
-  try {
-    await next();
-  } finally {
-    // Clear context after request
-    clearUserContext();
+    try {
+      // Handle MCP request
+      const response = await transport.handleRequest(req);
+      return withCors(response);
+    } finally {
+      // Clear user context
+      clearUserContext();
+    }
   }
-});
 
-// MCP endpoint
-app.all("/mcp", (c) => transport.handleRequest(c.req.raw));
+  // 404 for unknown routes
+  return json({ error: "Not Found", path }, 404);
+}
 
-// Connect MCP server to transport
+// Server configuration
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 const HOST = process.env.HOST || "0.0.0.0";
 
+// Connect MCP server to transport and start
 server.connect(transport).then(() => {
   console.log(`
 ╔═══════════════════════════════════════════════════════════════╗
 ║                                                               ║
-║   🔥 stx402-agent Remote MCP Server                           ║
+║   stx402-agent Remote MCP Server                              ║
 ║                                                               ║
 ║   Network:     ${NETWORK.padEnd(45)}║
 ║   API URL:     ${API_URL.padEnd(45)}║
@@ -288,10 +356,9 @@ server.connect(transport).then(() => {
   `);
 });
 
-// Export for Bun's native server (auto-detected)
-// When Bun sees a default export with fetch, it automatically serves it
+// Export for Bun's native server
 export default {
   port: PORT,
   hostname: HOST,
-  fetch: app.fetch,
+  fetch: handleRequest,
 };
