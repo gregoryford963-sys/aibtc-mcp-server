@@ -12,6 +12,7 @@ import { registerBnsTools } from "./bns.tools.js";
 import { registerQueryTools } from "./query.tools.js";
 import { registerEndpointTools } from "./endpoint.tools.js";
 import { registerDefiTools } from "./defi.tools.js";
+import { registerBitflowTools } from "./bitflow.tools.js";
 
 /**
  * Register all tools with the MCP server
@@ -52,4 +53,7 @@ export function registerAllTools(server: McpServer): void {
 
   // DeFi (ALEX DEX, Zest Protocol)
   registerDefiTools(server);
+
+  // Bitflow DEX
+  registerBitflowTools(server);
 }
