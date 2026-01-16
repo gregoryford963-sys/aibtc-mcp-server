@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: write
+  packages: write
 
 jobs:
   publish:
@@ -33,6 +34,21 @@ jobs:
         run: npm publish --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Setup Node.js for GitHub Packages
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://npm.pkg.github.com'
+          scope: '@biwasxyz'
+
+      - name: Publish to GitHub Packages
+        run: |
+          npm pkg set name="@biwasxyz/stx402-agent"
+          npm publish --access public
+          npm pkg set name="stx402-agent"
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Get version from tag
         id: version
