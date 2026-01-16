@@ -1,7 +1,7 @@
 import "dotenv/config";
 import axios, { type AxiosInstance } from "axios";
-import { withPaymentInterceptor } from "x402-stacks";
 import { mnemonicToAccount, type Network } from "./wallet.js";
+import { withSponsoredPaymentInterceptor } from "./services/sponsor-relay.js";
 
 export const NETWORK: Network =
   process.env.NETWORK === "mainnet" ? "mainnet" : "testnet";
@@ -71,7 +71,8 @@ export async function createApiClient(baseUrl?: string): Promise<AxiosInstance> 
     }
   );
 
-  const client = withPaymentInterceptor(axiosInstance, account);
+  // Use sponsored payment interceptor - fees are covered by the x402 sponsor relay
+  const client = withSponsoredPaymentInterceptor(axiosInstance, account);
   clientCache.set(url, client);
   return client;
 }
