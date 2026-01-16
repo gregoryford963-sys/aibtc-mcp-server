@@ -7,6 +7,20 @@ export const NETWORK: Network =
 
 export const API_URL = process.env.API_URL || "https://x402.biwas.xyz";
 
+/**
+ * x402 Sponsor Relay URLs
+ * These relays sponsor transaction fees for gasless AI agent transactions.
+ * @see https://github.com/aibtcdev/x402-sponsor-relay
+ */
+export const SPONSOR_RELAY_URLS: Record<Network, string> = {
+  testnet: "https://x402-relay.aibtc.dev",
+  mainnet: "https://x402-relay.aibtc.com",
+};
+
+export function getSponsorRelayUrl(network: Network): string {
+  return SPONSOR_RELAY_URLS[network];
+}
+
 export function getStacksNetwork(network: Network): StacksNetworkName {
   return network === "mainnet" ? "mainnet" : "testnet";
 }
