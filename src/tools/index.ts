@@ -12,6 +12,7 @@ import { registerBnsTools } from "./bns.tools.js";
 import { registerQueryTools } from "./query.tools.js";
 import { registerEndpointTools } from "./endpoint.tools.js";
 import { registerDefiTools } from "./defi.tools.js";
+import { registerBitflowTools } from "./bitflow.tools.js";
 import { registerScaffoldTools } from "./scaffold.tools.js";
 import { registerOpenRouterTools } from "./openrouter.tools.js";
 
@@ -54,6 +55,9 @@ export function registerAllTools(server: McpServer): void {
 
   // DeFi (ALEX DEX, Zest Protocol)
   registerDefiTools(server);
+
+  // Bitflow DEX
+  registerBitflowTools(server);
 
   // Scaffolding (generate x402 endpoint projects)
   registerScaffoldTools(server);

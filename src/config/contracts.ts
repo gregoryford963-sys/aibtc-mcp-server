@@ -230,3 +230,69 @@ export function getZestContracts(network: Network) {
 export function getWellKnownTokens(network: Network) {
   return WELL_KNOWN_TOKENS[network];
 }
+
+/**
+ * Bitflow DEX contract addresses
+ */
+export const BITFLOW_CONTRACTS = {
+  mainnet: {
+    // Primary StableSwap and Earn contracts
+    PRIMARY: "SPQC38PW542EQJ5M11CR25P7BS1CA6QT4TBXGB3M",
+    // XYK pool contracts
+    XYK: "SM1793C4R5PZ4NS4VQ4WMP7SKKYVH8JZEWSZ9HCCR",
+  },
+  testnet: {
+    PRIMARY: "STRP7MYBHSMFH5EGN3HGX6KNQ7QBHVTBPF1669DW",
+    XYK: null,
+  },
+} as const;
+
+/**
+ * Bitflow configuration
+ */
+export interface BitflowConfig {
+  apiHost: string;
+  apiKey: string | undefined;
+  readOnlyCallApiHost: string;
+  keeperApiHost?: string;
+  keeperApiKey?: string;
+}
+
+/**
+ * Get Bitflow configuration from environment
+ *
+ * TODO: Once API keys are obtained from Bitflow team:
+ * 1. Set BITFLOW_API_KEY and BITFLOW_API_HOST environment variables
+ * 2. Optionally set BITFLOW_KEEPER_API_KEY and BITFLOW_KEEPER_API_HOST for Keeper features
+ * 3. Consider moving keys to Cloudflare Worker proxy for secure npm distribution
+ */
+export function getBitflowConfig(): BitflowConfig | null {
+  const apiHost = process.env.BITFLOW_API_HOST;
+  const apiKey = process.env.BITFLOW_API_KEY;
+  const readOnlyCallApiHost = process.env.BITFLOW_READONLY_API_HOST || "https://api.hiro.so";
+
+  // Return null if no API key configured (Bitflow features disabled)
+  if (!apiKey) {
+    return null;
+  }
+
+  return {
+    apiHost: apiHost || "",
+    apiKey,
+    readOnlyCallApiHost,
+    keeperApiHost: process.env.BITFLOW_KEEPER_API_HOST,
+    keeperApiKey: process.env.BITFLOW_KEEPER_API_KEY,
+  };
+}
+
+/**
+ * Get Bitflow contract addresses for the network
+ */
+export function getBitflowContracts(network: Network) {
+  return BITFLOW_CONTRACTS[network];
+}
+
+/**
+ * Bitflow public API base URL (no API key required)
+ */
+export const BITFLOW_PUBLIC_API = "https://bitflow-sdk-api-gateway-7owjsmt8.uc.gateway.dev";
