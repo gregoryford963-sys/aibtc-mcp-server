@@ -63,7 +63,8 @@ stx402-agent MCP Server (src/index.ts)
 ### Key Files
 
 - `src/index.ts` - MCP server with all tool definitions
-- `src/api.ts` - Axios client with x402-stacks payment interceptor (supports multiple API sources)
+- `src/api.ts` - Axios client with sponsored x402 payment interceptor (supports multiple API sources)
+- `src/services/sponsor-relay.ts` - Sponsored payment interceptor using aibtc x402 relay (gasless transactions)
 - `src/wallet.ts` - Wallet operations and transaction signing using @stacks/transactions
 - `src/services/wallet-manager.ts` - Managed wallet creation, encryption, and session management
 - `src/services/defi.service.ts` - ALEX DEX (via alex-sdk) and Zest Protocol integrations
@@ -83,14 +84,25 @@ The agent supports both BNS naming systems:
 
 BNS tools automatically check V2 first for `.btc` names, falling back to V1 for legacy support.
 
-### x402 Payment Flow
+### x402 Payment Flow (Sponsored)
+
+The agent uses the **x402 sponsor relay** for gasless transactions. Transaction fees are covered by the relay, not the agent.
 
 1. Client makes request to x402 endpoint
 2. Endpoint returns HTTP 402 with payment requirements
-3. `withPaymentInterceptor` from x402-stacks intercepts the 402
-4. Interceptor signs and broadcasts payment transaction
-5. Request is retried with payment proof
-6. Endpoint returns actual response
+3. `withSponsoredPaymentInterceptor` builds a sponsored transaction (`fee: 0`, `sponsored: true`)
+4. Transaction is submitted to the sponsor relay (not broadcast directly)
+5. Relay sponsors the fee, broadcasts the transaction, and verifies settlement
+6. Request is retried with payment txid
+7. Endpoint returns actual response
+
+**Relay Endpoints:**
+| Network | URL |
+|---------|-----|
+| Testnet | https://x402-relay.aibtc.dev |
+| Mainnet | https://x402-relay.aibtc.com |
+
+See: https://github.com/aibtcdev/x402-sponsor-relay
 
 ## Configuration
 
@@ -98,6 +110,8 @@ Set environment variables in `.env`:
 - `CLIENT_MNEMONIC` - 24-word Stacks wallet mnemonic (optional - can use managed wallets instead)
 - `NETWORK` - "mainnet" or "testnet" (default: testnet)
 - `API_URL` - Default x402 API base URL (default: https://x402.biwas.xyz)
+
+Sponsor relay URLs are configured in `src/config/networks.ts`.
 
 ### Wallet Storage
 
