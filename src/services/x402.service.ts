@@ -1,7 +1,7 @@
 import "dotenv/config";
 import axios, { type AxiosInstance } from "axios";
-import { withPaymentInterceptor } from "x402-stacks";
 import { generateWallet, getStxAddress } from "@stacks/wallet-sdk";
+import { withSponsoredPaymentInterceptor } from "./sponsor-relay.js";
 import { NETWORK, API_URL, type Network } from "../config/networks.js";
 import type { Account } from "../transactions/builder.js";
 import { getWalletManager } from "./wallet-manager.js";
@@ -66,17 +66,11 @@ export async function createApiClient(baseUrl?: string): Promise<AxiosInstance> 
     ],
   });
 
-  // Ensure 402 payloads are parsed before x402-stacks validates them
+  // Ensure 402 payloads are parsed before the payment interceptor validates them
   axiosInstance.interceptors.response.use(
     (response) => response,
     (error) => {
       const data = error?.response?.data;
-      if (error?.response?.status === 402) {
-        console.error(
-          "x402 debug 402 payload",
-          typeof data === "string" ? data : JSON.stringify(data)
-        );
-      }
       if (typeof data === "string") {
         const trimmed = data.trim();
         if (trimmed) {
@@ -91,7 +85,7 @@ export async function createApiClient(baseUrl?: string): Promise<AxiosInstance> 
     }
   );
 
-  const client = withPaymentInterceptor(axiosInstance, account);
+  const client = withSponsoredPaymentInterceptor(axiosInstance, account);
   clientCache.set(url, client);
   return client;
 }

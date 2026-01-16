@@ -136,7 +136,13 @@ async function buildSponsoredTransaction(
       fee: 0n,
     });
 
-    return Buffer.from(transaction.serialize()).toString("hex");
+    const serialized = transaction.serialize();
+    // serialize() returns a hex string in @stacks/transactions v7.x
+    if (typeof serialized === "string") {
+      return serialized;
+    }
+    // Fallback for older versions that return Uint8Array
+    return Buffer.from(serialized).toString("hex");
   } else {
     // STX transfer
     const transaction = await makeSTXTokenTransfer({
@@ -150,7 +156,13 @@ async function buildSponsoredTransaction(
       fee: 0n,
     });
 
-    return Buffer.from(transaction.serialize()).toString("hex");
+    const serialized = transaction.serialize();
+    // serialize() returns a hex string in @stacks/transactions v7.x
+    if (typeof serialized === "string") {
+      return serialized;
+    }
+    // Fallback for older versions that return Uint8Array
+    return Buffer.from(serialized).toString("hex");
   }
 }
 
