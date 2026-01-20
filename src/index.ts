@@ -15,7 +15,7 @@ import { NETWORK, API_URL } from "./config/index.js";
 
 async function installToClaudeCode(): Promise<void> {
   const claudeConfigPath = path.join(os.homedir(), ".claude.json");
-  const network = process.argv.includes("--mainnet") ? "mainnet" : "testnet";
+  const network = process.argv.includes("--testnet") ? "testnet" : "mainnet";
 
   console.log("🔧 Installing @aibtc/mcp-server to Claude Code...\n");
 

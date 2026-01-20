@@ -117,7 +117,7 @@ BNS tools automatically check V2 first for `.btc` names, falling back to V1 for 
 
 Set environment variables in `.env`:
 - `CLIENT_MNEMONIC` - 24-word Stacks wallet mnemonic (optional - can use managed wallets instead)
-- `NETWORK` - "mainnet" or "testnet" (default: testnet)
+- `NETWORK` - "mainnet" or "testnet" (default: mainnet)
 - `API_URL` - Default x402 API base URL (default: https://x402.biwas.xyz)
 
 ### Wallet Storage
@@ -141,7 +141,7 @@ npx @aibtc/mcp-server@latest --install
 
 This automatically configures `~/.claude.json` with the MCP server. The `@latest` tag ensures users always get the newest features.
 
-**For mainnet:** `npx @aibtc/mcp-server@latest --install --mainnet`
+**For testnet:** `npx @aibtc/mcp-server@latest --install --testnet`
 
 **Note:** `CLIENT_MNEMONIC` is optional. Users can either:
 1. **Managed wallets (recommended)**: Use `wallet_create` or `wallet_import` to generate/import wallets with password protection
@@ -187,7 +187,7 @@ This automatically configures `~/.claude.json` with the MCP server. The `@latest
 | `projectName` | Yes | Project name (lowercase, hyphens) |
 | `endpoints` | Yes | Array of endpoint configs |
 | `recipientAddress` | Yes | Stacks address to receive payments |
-| `network` | No | "mainnet" or "testnet" (default: testnet) |
+| `network` | No | "mainnet" or "testnet" (default: mainnet) |
 | `facilitatorUrl` | No | Custom facilitator URL |
 
 **Endpoint Config:**

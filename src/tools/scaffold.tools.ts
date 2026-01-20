@@ -74,8 +74,8 @@ The generated endpoints implement the x402 payment protocol:
         network: z
           .enum(["mainnet", "testnet"])
           .optional()
-          .default("testnet")
-          .describe("Network for payments (default: testnet)"),
+          .default("mainnet")
+          .describe("Network for payments (default: mainnet)"),
         facilitatorUrl: z
           .string()
           .url()
@@ -92,7 +92,7 @@ The generated endpoints implement the x402 payment protocol:
           projectName,
           endpoints: endpoints as EndpointConfig[],
           recipientAddress,
-          network: network || "testnet",
+          network: network || "mainnet",
           facilitatorUrl: facilitatorUrl || "https://facilitator.x402stacks.xyz",
         });
 
@@ -190,8 +190,8 @@ Creates a ready-to-deploy Hono.js application that:
         network: z
           .enum(["mainnet", "testnet"])
           .optional()
-          .default("testnet")
-          .describe("Network for payments (default: testnet)"),
+          .default("mainnet")
+          .describe("Network for payments (default: mainnet)"),
         facilitatorUrl: z
           .string()
           .url()
@@ -219,7 +219,7 @@ Creates a ready-to-deploy Hono.js application that:
           projectName,
           endpoints: endpoints as AIEndpointConfig[],
           recipientAddress,
-          network: network || "testnet",
+          network: network || "mainnet",
           facilitatorUrl: facilitatorUrl || "https://facilitator.x402stacks.xyz",
           defaultModel: defaultModel || "anthropic/claude-3-haiku",
         });

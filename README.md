@@ -25,9 +25,9 @@ npx @aibtc/mcp-server@latest --install
 
 That's it! This automatically configures Claude Code. Restart your terminal and start chatting.
 
-**For mainnet:**
+**For testnet:**
 ```bash
-npx @aibtc/mcp-server@latest --install --mainnet
+npx @aibtc/mcp-server@latest --install --testnet
 ```
 
 > **Why npx?** Using `npx @aibtc/mcp-server@latest` ensures you always get the newest version automatically. Global installs (`npm install -g`) won't auto-update.
@@ -275,7 +275,7 @@ Or use any SIP-010 token by contract ID: `SP2X...::token-name`
 
 | Environment Variable | Description | Default |
 |---------------------|-------------|---------|
-| `NETWORK` | `mainnet` or `testnet` | `testnet` |
+| `NETWORK` | `mainnet` or `testnet` | `mainnet` |
 | `API_URL` | Default x402 API base URL | `https://x402.biwas.xyz` |
 | `CLIENT_MNEMONIC` | (Optional) Pre-configured mnemonic | - |
 
