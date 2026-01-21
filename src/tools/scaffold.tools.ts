@@ -1,54 +1,83 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import fs from "fs/promises";
+import path from "path";
 import {
   scaffoldProject,
   scaffoldAIProject,
   type EndpointConfig,
   type AIEndpointConfig,
+  type PricingTier,
 } from "../services/scaffold.service.js";
 import { createJsonResponse, createErrorResponse } from "../utils/index.js";
+import { getWalletAddress } from "../services/x402.service.js";
+
+/**
+ * Check if a directory contains an existing x402 project
+ */
+async function isExistingX402Project(dir: string): Promise<boolean> {
+  try {
+    const indexPath = path.join(dir, "src", "index.ts");
+    const middlewarePath = path.join(dir, "src", "x402-middleware.ts");
+    const packagePath = path.join(dir, "package.json");
+
+    const [hasIndex, hasMiddleware, hasPackage] = await Promise.all([
+      fs.access(indexPath).then(() => true).catch(() => false),
+      fs.access(middlewarePath).then(() => true).catch(() => false),
+      fs.access(packagePath).then(() => true).catch(() => false),
+    ]);
+
+    return hasIndex && hasMiddleware && hasPackage;
+  } catch {
+    return false;
+  }
+}
 
 export function registerScaffoldTools(server: McpServer): void {
   server.registerTool(
     "scaffold_x402_endpoint",
     {
-      description: `Generate a complete Cloudflare Worker project with x402 payment integration.
+      description: `Create a complete x402 paid API project as a Cloudflare Worker.
 
-Creates a ready-to-deploy Hono.js application that accepts payments in STX, sBTC, or USDCx.
+This creates a NEW PROJECT FOLDER with everything needed to deploy a pay-per-use API:
+- Full Hono.js application with x402 payment middleware
+- Ready for deployment to Cloudflare Workers
+- Based on production patterns from x402-api and stx402
 
-## Output Files
+## What Gets Created
 
-- src/index.ts - Hono app with x402-protected endpoints
-- src/x402-middleware.ts - Payment verification middleware
-- wrangler.jsonc - Cloudflare Worker configuration
-- package.json - Dependencies and scripts
-- tsconfig.json - TypeScript configuration
-- .env.example - Environment variable template
-- .gitignore - Standard ignores
+A folder named \`{projectName}\` containing:
+- src/index.ts - Hono app with your x402-protected endpoints
+- src/x402-middleware.ts - Payment verification (uses x402-stacks library)
+- wrangler.jsonc - Cloudflare Worker config with staging/production envs
+- package.json - Dependencies including hono and x402-stacks
+- .dev.vars - Local dev variables (pre-filled if you have a wallet)
 - README.md - Documentation
 
-## After Generation
+## Pricing Tiers
 
-1. cd into the project directory
-2. Run: npm install
-3. Copy .env.example to .env and add Cloudflare credentials
-4. Set recipient address as secret: wrangler secret put RECIPIENT_ADDRESS
-5. Run: npm run dev (local development)
-6. Run: npm run deploy (deploy to Cloudflare)
+Use tiers for consistent pricing:
+- **simple/standard**: 0.001 STX
+- **ai**: 0.003 STX
+- **heavy_ai**: 0.01 STX
+- **storage_read**: 0.0005 STX
+- **storage_write**: 0.001 STX
 
-## Payment Flow
+## Quick Start After Generation
 
-The generated endpoints implement the x402 payment protocol:
-1. Client requests endpoint without payment → receives 402 with payment requirements
-2. Client signs transaction (does NOT broadcast)
-3. Client retries with X-PAYMENT header containing signed tx
-4. Server settles payment via facilitator and returns response`,
+\`\`\`
+cd {projectName}
+npm install
+npm run dev
+\`\`\``,
       inputSchema: {
-        outputDir: z.string().describe("Absolute path to output directory (must exist)"),
+        outputDir: z
+          .string()
+          .describe("Directory where the project folder will be created (e.g., '/Users/me/projects' or '.')"),
         projectName: z
           .string()
           .regex(/^[a-z][a-z0-9-]*$/, "Project name must be lowercase with hyphens only")
-          .describe("Project name (lowercase, hyphens allowed, e.g., 'my-x402-api')"),
+          .describe("Project name - a folder with this name will be created (e.g., 'my-x402-api')"),
         endpoints: z
           .array(
             z.object({
@@ -61,8 +90,13 @@ The generated endpoints implement the x402 payment protocol:
               amount: z
                 .string()
                 .regex(/^\d+(\.\d+)?$/, "Amount must be a positive number")
-                .describe("Payment amount (e.g., '0.001' STX or '0.0001' sBTC)"),
+                .optional()
+                .describe("Payment amount (e.g., '0.001' STX). Optional if tier is specified."),
               tokenType: z.enum(["STX", "sBTC", "USDCx"]).describe("Payment token type"),
+              tier: z
+                .enum(["simple", "standard", "ai", "heavy_ai", "storage_read", "storage_write"])
+                .optional()
+                .describe("Pricing tier (overrides amount if specified)"),
             })
           )
           .min(1)
@@ -70,7 +104,8 @@ The generated endpoints implement the x402 payment protocol:
         recipientAddress: z
           .string()
           .regex(/^S[PT][A-Z0-9]+$/, "Must be a valid Stacks address")
-          .describe("Stacks address to receive payments"),
+          .optional()
+          .describe("Stacks address to receive payments. If not provided, uses your configured wallet address or must be set in .dev.vars"),
         network: z
           .enum(["mainnet", "testnet"])
           .optional()
@@ -87,26 +122,68 @@ The generated endpoints implement the x402 payment protocol:
     },
     async ({ outputDir, projectName, endpoints, recipientAddress, network, facilitatorUrl }) => {
       try {
+        const projectPath = path.join(outputDir, projectName);
+
+        // Check if project already exists
+        const projectExists = await fs.access(projectPath).then(() => true).catch(() => false);
+        if (projectExists) {
+          // Check if it's an x402 project we can add to
+          const isX402 = await isExistingX402Project(projectPath);
+          if (isX402) {
+            return createJsonResponse({
+              success: false,
+              error: "Project already exists",
+              message: `A project already exists at ${projectPath}. Adding endpoints to existing projects is not yet supported. Please choose a different project name or delete the existing project.`,
+              projectPath,
+            });
+          } else {
+            return createJsonResponse({
+              success: false,
+              error: "Directory already exists",
+              message: `A directory already exists at ${projectPath}. Please choose a different project name.`,
+              projectPath,
+            });
+          }
+        }
+
+        // Try to auto-fill recipient address from configured wallet if not provided
+        let finalRecipientAddress = recipientAddress;
+        if (!finalRecipientAddress) {
+          try {
+            finalRecipientAddress = await getWalletAddress();
+          } catch {
+            // No wallet configured - that's OK, user will need to set it manually
+          }
+        }
+
         const result = await scaffoldProject({
           outputDir,
           projectName,
           endpoints: endpoints as EndpointConfig[],
-          recipientAddress,
+          recipientAddress: finalRecipientAddress,
           network: network || "mainnet",
           facilitatorUrl: facilitatorUrl || "https://facilitator.x402stacks.xyz",
         });
 
+        const responseEndpoints = endpoints.map((ep) => {
+          const cost = ep.tier
+            ? `tier: ${ep.tier}`
+            : `${ep.amount || "0.001"} ${ep.tokenType}`;
+          return {
+            path: ep.path,
+            method: ep.method,
+            cost,
+          };
+        });
+
         return createJsonResponse({
           success: true,
-          message: `Project scaffolded successfully at ${result.projectPath}`,
+          message: `Project created at ${result.projectPath}`,
           projectPath: result.projectPath,
           filesCreated: result.filesCreated,
           nextSteps: result.nextSteps,
-          endpoints: endpoints.map((ep) => ({
-            path: ep.path,
-            method: ep.method,
-            cost: `${ep.amount} ${ep.tokenType}`,
-          })),
+          recipientAddress: finalRecipientAddress || "(set in .dev.vars)",
+          endpoints: responseEndpoints,
         });
       } catch (error) {
         return createErrorResponse(error);
@@ -118,43 +195,47 @@ The generated endpoints implement the x402 payment protocol:
   server.registerTool(
     "scaffold_x402_ai_endpoint",
     {
-      description: `Generate a complete Cloudflare Worker project with x402 payment + OpenRouter AI integration.
+      description: `Create a complete x402 paid AI API project with OpenRouter integration.
 
-Creates a ready-to-deploy Hono.js application that:
-- Accepts payments in STX, sBTC, or USDCx
-- Calls OpenRouter AI models (Claude, GPT-4, Llama, etc.)
-- Returns AI-generated responses after payment
+This creates a NEW PROJECT FOLDER with everything needed to deploy a pay-per-use AI API:
+- Full Hono.js application with x402 payment middleware
+- OpenRouter integration for Claude, GPT-4, Llama, etc.
+- Ready for deployment to Cloudflare Workers
+
+## What Gets Created
+
+A folder named \`{projectName}\` containing:
+- src/index.ts - Hono app with your x402-protected AI endpoints
+- src/x402-middleware.ts - Payment verification (uses x402-stacks library)
+- src/openrouter.ts - OpenRouter API client
+- wrangler.jsonc - Cloudflare Worker config
+- .dev.vars - Local dev variables (needs OPENROUTER_API_KEY)
+- README.md - Documentation
 
 ## AI Types
 
-- **chat**: General chat/Q&A endpoint
-- **completion**: Text completion/continuation
-- **summarize**: Summarize provided text
-- **translate**: Translate text to target language
+- **chat**: General chat/Q&A
+- **completion**: Text completion
+- **summarize**: Summarize text
+- **translate**: Translate text
 - **custom**: Custom system prompt
 
-## Output Files
+## Quick Start After Generation
 
-- src/index.ts - Hono app with x402-protected AI endpoints
-- src/x402-middleware.ts - Payment verification middleware
-- src/openrouter.ts - OpenRouter API client
-- wrangler.jsonc - Cloudflare Worker configuration
-- package.json, tsconfig.json, .env.example, README.md
-
-## After Generation
-
-1. cd into the project directory
-2. npm install
-3. Set secrets: wrangler secret put RECIPIENT_ADDRESS
-4. Set secrets: wrangler secret put OPENROUTER_API_KEY
-5. For local dev: create .dev.vars with both secrets
-6. npm run dev`,
+\`\`\`
+cd {projectName}
+npm install
+# Edit .dev.vars with RECIPIENT_ADDRESS and OPENROUTER_API_KEY
+npm run dev
+\`\`\``,
       inputSchema: {
-        outputDir: z.string().describe("Absolute path to output directory (must exist)"),
+        outputDir: z
+          .string()
+          .describe("Directory where the project folder will be created (e.g., '/Users/me/projects' or '.')"),
         projectName: z
           .string()
           .regex(/^[a-z][a-z0-9-]*$/, "Project name must be lowercase with hyphens only")
-          .describe("Project name (lowercase, hyphens allowed, e.g., 'my-ai-api')"),
+          .describe("Project name - a folder with this name will be created (e.g., 'my-ai-api')"),
         endpoints: z
           .array(
             z.object({
@@ -186,7 +267,8 @@ Creates a ready-to-deploy Hono.js application that:
         recipientAddress: z
           .string()
           .regex(/^S[PT][A-Z0-9]+$/, "Must be a valid Stacks address")
-          .describe("Stacks address to receive payments"),
+          .optional()
+          .describe("Stacks address to receive payments. If not provided, uses your configured wallet address or must be set in .dev.vars"),
         network: z
           .enum(["mainnet", "testnet"])
           .optional()
@@ -214,11 +296,45 @@ Creates a ready-to-deploy Hono.js application that:
       defaultModel,
     }) => {
       try {
+        const projectPath = path.join(outputDir, projectName);
+
+        // Check if project already exists
+        const projectExists = await fs.access(projectPath).then(() => true).catch(() => false);
+        if (projectExists) {
+          // Check if it's an x402 project we can add to
+          const isX402 = await isExistingX402Project(projectPath);
+          if (isX402) {
+            return createJsonResponse({
+              success: false,
+              error: "Project already exists",
+              message: `A project already exists at ${projectPath}. Adding endpoints to existing projects is not yet supported. Please choose a different project name or delete the existing project.`,
+              projectPath,
+            });
+          } else {
+            return createJsonResponse({
+              success: false,
+              error: "Directory already exists",
+              message: `A directory already exists at ${projectPath}. Please choose a different project name.`,
+              projectPath,
+            });
+          }
+        }
+
+        // Try to auto-fill recipient address from configured wallet if not provided
+        let finalRecipientAddress = recipientAddress;
+        if (!finalRecipientAddress) {
+          try {
+            finalRecipientAddress = await getWalletAddress();
+          } catch {
+            // No wallet configured - that's OK, user will need to set it manually
+          }
+        }
+
         const result = await scaffoldAIProject({
           outputDir,
           projectName,
           endpoints: endpoints as AIEndpointConfig[],
-          recipientAddress,
+          recipientAddress: finalRecipientAddress,
           network: network || "mainnet",
           facilitatorUrl: facilitatorUrl || "https://facilitator.x402stacks.xyz",
           defaultModel: defaultModel || "anthropic/claude-3-haiku",
@@ -230,6 +346,7 @@ Creates a ready-to-deploy Hono.js application that:
           projectPath: result.projectPath,
           filesCreated: result.filesCreated,
           nextSteps: result.nextSteps,
+          recipientAddress: finalRecipientAddress || "(set in .dev.vars)",
           endpoints: endpoints.map((ep) => ({
             path: ep.path,
             aiType: ep.aiType,
