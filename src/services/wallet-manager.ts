@@ -25,6 +25,7 @@ import {
 } from "../utils/errors.js";
 import { NETWORK, type Network } from "../config/networks.js";
 import type { Account } from "../transactions/builder.js";
+import { deriveBitcoinAddress } from "../utils/bitcoin.js";
 
 /**
  * Session state for unlocked wallet
@@ -108,6 +109,9 @@ class WalletManager {
     const stacksAccount = wallet.accounts[0];
     const address = getStxAddress(stacksAccount, walletNetwork);
 
+    // Derive Bitcoin address
+    const { address: btcAddress } = deriveBitcoinAddress(mnemonic, walletNetwork);
+
     // Encrypt mnemonic
     const encrypted = await encrypt(mnemonic, password);
 
@@ -129,6 +133,7 @@ class WalletManager {
       id: walletId,
       name,
       address,
+      btcAddress,
       network: walletNetwork,
       createdAt: new Date().toISOString(),
     };
@@ -174,6 +179,9 @@ class WalletManager {
     const stacksAccount = wallet.accounts[0];
     const address = getStxAddress(stacksAccount, walletNetwork);
 
+    // Derive Bitcoin address
+    const { address: btcAddress } = deriveBitcoinAddress(normalizedMnemonic, walletNetwork);
+
     // Encrypt mnemonic
     const encrypted = await encrypt(normalizedMnemonic, password);
 
@@ -195,6 +203,7 @@ class WalletManager {
       id: walletId,
       name,
       address,
+      btcAddress,
       network: walletNetwork,
       createdAt: new Date().toISOString(),
     };
@@ -249,8 +258,12 @@ class WalletManager {
     const stacksAccount = wallet.accounts[0];
     const address = getStxAddress(stacksAccount, walletMeta.network);
 
+    // Derive Bitcoin address
+    const { address: btcAddress } = deriveBitcoinAddress(mnemonic, walletMeta.network);
+
     const account: Account = {
       address,
+      btcAddress,
       privateKey: stacksAccount.stxPrivateKey,
       network: walletMeta.network,
     };
@@ -323,6 +336,7 @@ class WalletManager {
   getSessionInfo(): {
     walletId: string;
     address: string;
+    btcAddress?: string;
     expiresAt: Date | null;
   } | null {
     if (!this.session) {
@@ -338,6 +352,7 @@ class WalletManager {
     return {
       walletId: this.session.walletId,
       address: this.session.account.address,
+      btcAddress: this.session.account.btcAddress,
       expiresAt: this.session.expiresAt,
     };
   }
