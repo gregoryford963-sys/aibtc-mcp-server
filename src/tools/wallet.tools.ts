@@ -24,10 +24,12 @@ export function registerWalletTools(server: McpServer): void {
         // Try to get wallet address
         try {
           const address = await getWalletAddress();
+          const btcAddress = sessionInfo?.btcAddress;
           return createJsonResponse({
             status: "ready",
             message: "I have a wallet and I'm ready to perform transactions.",
             address,
+            btcAddress,
             network: NETWORK,
             apiUrl: API_URL,
           });
@@ -44,6 +46,7 @@ export function registerWalletTools(server: McpServer): void {
                 id: w.id,
                 name: w.name,
                 address: w.address,
+                btcAddress: w.btcAddress,
                 network: w.network,
               })),
               network: NETWORK,
