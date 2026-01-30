@@ -4,3 +4,4 @@ export * from "./validation.js";
 export * from "./encryption.js";
 export * from "./storage.js";
 export * from "./redact.js";
+export * from "./bitcoin.js";
