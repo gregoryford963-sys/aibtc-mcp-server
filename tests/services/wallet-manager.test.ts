@@ -135,7 +135,7 @@ describe("WalletManager", () => {
       expect(words.length).toBe(24);
     });
 
-    it("should store wallet in index", async () => {
+    it("should store wallet in index with Bitcoin address", async () => {
       const result = await walletManager.createWallet(
         "test-wallet",
         "password123"
@@ -146,17 +146,24 @@ describe("WalletManager", () => {
       expect(wallets[0].id).toBe(result.walletId);
       expect(wallets[0].name).toBe("test-wallet");
       expect(wallets[0].address).toBe(result.address);
+
+      // Verify Bitcoin address is present and has correct format
+      expect(wallets[0].btcAddress).toBeDefined();
+      // Testnet Bitcoin addresses start with tb1q (native SegWit)
+      expect(wallets[0].btcAddress).toMatch(/^tb1q[a-z0-9]{38,}$/);
     });
   });
 
   describe("importWallet", () => {
-    it("should import wallet with valid mnemonic", async () => {
+    it("should import wallet with valid mnemonic and derive Bitcoin address", async () => {
       // First create a wallet to get a valid mnemonic
       const created = await walletManager.createWallet(
         "original",
         "password123"
       );
       const mnemonic = created.mnemonic;
+      const createdWallets = await walletManager.listWallets();
+      const originalBtcAddress = createdWallets[0].btcAddress;
 
       // Reset storage
       inMemoryWalletIndex.wallets = [];
@@ -173,6 +180,11 @@ describe("WalletManager", () => {
       expect(result).toHaveProperty("address");
       // Same mnemonic should produce same address
       expect(result.address).toBe(created.address);
+
+      // Verify Bitcoin address matches original
+      const wallets = await walletManager.listWallets();
+      expect(wallets[0].btcAddress).toBe(originalBtcAddress);
+      expect(wallets[0].btcAddress).toMatch(/^tb1q[a-z0-9]{38,}$/);
     });
 
     it("should throw for invalid mnemonic", async () => {
@@ -185,7 +197,7 @@ describe("WalletManager", () => {
   });
 
   describe("unlock and lock lifecycle", () => {
-    it("should unlock wallet with correct password", async () => {
+    it("should unlock wallet with correct password and include Bitcoin address", async () => {
       const created = await walletManager.createWallet(
         "test-wallet",
         "password123"
@@ -199,6 +211,14 @@ describe("WalletManager", () => {
       expect(account).toHaveProperty("address");
       expect(account.address).toBe(created.address);
       expect(walletManager.isUnlocked()).toBe(true);
+
+      // Verify Bitcoin address is included in account
+      expect(account.btcAddress).toBeDefined();
+      expect(account.btcAddress).toMatch(/^tb1q[a-z0-9]{38,}$/);
+
+      // Verify Bitcoin address matches metadata
+      const wallets = await walletManager.listWallets();
+      expect(account.btcAddress).toBe(wallets[0].btcAddress);
     });
 
     it("should throw when unlocking with wrong password", async () => {
@@ -229,7 +249,7 @@ describe("WalletManager", () => {
   });
 
   describe("session management", () => {
-    it("should return session info when unlocked", async () => {
+    it("should return session info when unlocked with Bitcoin address", async () => {
       const created = await walletManager.createWallet(
         "test-wallet",
         "password123"
@@ -241,6 +261,10 @@ describe("WalletManager", () => {
       expect(sessionInfo).not.toBeNull();
       expect(sessionInfo?.walletId).toBe(created.walletId);
       expect(sessionInfo?.expiresAt).toBeDefined();
+
+      // Verify Bitcoin address is exposed in session info
+      expect(sessionInfo?.btcAddress).toBeDefined();
+      expect(sessionInfo?.btcAddress).toMatch(/^tb1q[a-z0-9]{38,}$/);
     });
 
     it("should return null session info when locked", () => {
