@@ -203,62 +203,48 @@ export class BnsService {
 
   /**
    * Get the price of a BNS name
-   * Uses BNS V2 contract for .btc names, falls back to Hiro API for legacy
+   * Uses appropriate contract based on namespace (V2 for .btc, V1 for others)
    */
   async getPrice(name: string): Promise<BnsPrice | null> {
-    const fullName = name.endsWith(".btc") ? name : `${name}.btc`;
+    const fullName = name.includes(".") ? name : `${name}.btc`;
     const [baseName, namespace] = fullName.split(".");
 
-    // For .btc names, use BNS V2 contract
-    if (namespace === "btc") {
-      try {
-        const bnsV2Contract = "SP2QEZ06AGJ3RKJPBV14SY1V5BBFNAW33D96YPGZF.BNS-V2";
-        const result = await this.hiro.callReadOnlyFunction(
-          bnsV2Contract,
-          "get-name-price",
-          [
-            bufferCV(Buffer.from(namespace)),
-            bufferCV(Buffer.from(baseName)),
-          ],
-          "SP2QEZ06AGJ3RKJPBV14SY1V5BBFNAW33D96YPGZF"
-        );
+    // Get the appropriate contract for this namespace
+    const { address, name: contractName, version } = this.getBnsContract(namespace);
+    const contractId = `${address}.${contractName}`;
 
-        if (result.okay && result.result) {
-          // Parse the Clarity response: (ok (ok u<price>))
-          const decoded = cvToJSON(hexToCV(result.result));
-          // Handle nested response: { value: { value: { value: <price> } } }
-          const priceValue = decoded?.value?.value?.value ?? decoded?.value?.value ?? decoded?.value ?? decoded;
-
-          if (priceValue !== undefined && priceValue !== null) {
-            // Handle string (like "2000000") or number
-            const amountMicroStx = String(priceValue);
-            const amountStx = (BigInt(amountMicroStx) / BigInt(1_000_000)).toString();
-            return {
-              units: "ustx",
-              amount: amountMicroStx,
-              amountStx,
-            };
-          }
-        }
-      } catch {
-        // Fall through to Hiro API
-      }
-    }
-
-    // Fallback to Hiro API for legacy BNS V1
     try {
-      const price = await this.hiro.getBnsNamePrice(baseName);
-      const amountMicroStx = price.amount;
-      const amountStx = (BigInt(amountMicroStx) / BigInt(1_000_000)).toString();
+      const result = await this.hiro.callReadOnlyFunction(
+        contractId,
+        "get-name-price",
+        [
+          bufferCV(Buffer.from(namespace)),
+          bufferCV(Buffer.from(baseName)),
+        ],
+        address
+      );
 
-      return {
-        units: price.units,
-        amount: amountMicroStx,
-        amountStx,
-      };
+      if (result.okay && result.result) {
+        // Parse the Clarity response
+        const decoded = cvToJSON(hexToCV(result.result));
+        // Handle nested response structure: V2 returns (ok (ok u<price>)), V1 returns (ok u<price>)
+        const priceValue = decoded?.value?.value?.value ?? decoded?.value?.value ?? decoded?.value ?? decoded;
+
+        if (priceValue !== undefined && priceValue !== null) {
+          const amountMicroStx = String(priceValue);
+          const amountStx = (BigInt(amountMicroStx) / BigInt(1_000_000)).toString();
+          return {
+            units: "ustx",
+            amount: amountMicroStx,
+            amountStx,
+          };
+        }
+      }
     } catch {
-      return null;
+      // Contract call failed
     }
+
+    return null;
   }
 
   /**
