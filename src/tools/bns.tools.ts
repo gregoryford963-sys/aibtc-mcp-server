@@ -1,8 +1,9 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { getWalletAddress, NETWORK } from "../services/x402.service.js";
+import { getAccount, getWalletAddress, NETWORK } from "../services/x402.service.js";
 import { getBnsService } from "../services/bns.service.js";
 import { createJsonResponse, createErrorResponse } from "../utils/index.js";
+import crypto from "crypto";
 
 export function registerBnsTools(server: McpServer): void {
   // Lookup BNS name
@@ -188,6 +189,113 @@ export function registerBnsTools(server: McpServer): void {
           network: NETWORK,
           domainsCount: domains.length,
           domains,
+        });
+      } catch (error) {
+        return createErrorResponse(error);
+      }
+    }
+  );
+
+  // Preorder BNS name (Step 1 of 2 for registration)
+  server.registerTool(
+    "preorder_bns_name",
+    {
+      description:
+        "Preorder a BNS domain name. This is step 1 of a 2-step registration process. " +
+        "After preorder is confirmed (~10 minutes), call register_bns_name with the same salt. " +
+        "IMPORTANT: Save the returned salt - you'll need it for the register step! " +
+        "Auto-detects contract version: V2 for .btc names, V1 for other namespaces.",
+      inputSchema: {
+        name: z
+          .string()
+          .describe("BNS name to preorder (e.g., 'myname' or 'myname.btc')"),
+        salt: z
+          .string()
+          .optional()
+          .describe("Optional salt for the preorder hash. If not provided, a random salt will be generated."),
+      },
+    },
+    async ({ name, salt }) => {
+      try {
+        const bnsService = getBnsService(NETWORK);
+        const account = await getAccount();
+
+        // Check if name is available first
+        const available = await bnsService.checkAvailability(name);
+        if (!available) {
+          return createErrorResponse(
+            new Error(`Name "${name}" is not available for registration`)
+          );
+        }
+
+        // Get the price for reference
+        const price = await bnsService.getPrice(name);
+
+        // Generate salt if not provided
+        const usedSalt = salt || crypto.randomBytes(16).toString("hex");
+
+        // Perform the preorder
+        const result = await bnsService.preorderName(account, name, usedSalt);
+
+        const fullName = name.endsWith(".btc") ? name : `${name}.btc`;
+
+        return createJsonResponse({
+          success: true,
+          step: "1 of 2 (preorder)",
+          name: fullName,
+          salt: usedSalt,
+          txid: result.txid,
+          network: NETWORK,
+          price: price
+            ? {
+                microStx: price.amount,
+                stx: price.amountStx + " STX",
+              }
+            : null,
+          nextStep:
+            "Wait for this transaction to be confirmed (~10 minutes), then call register_bns_name with the same name and salt.",
+        });
+      } catch (error) {
+        return createErrorResponse(error);
+      }
+    }
+  );
+
+  // Register BNS name (Step 2 of 2 for registration)
+  server.registerTool(
+    "register_bns_name",
+    {
+      description:
+        "Register a BNS domain name after preorder is confirmed. This is step 2 of a 2-step process. " +
+        "You MUST use the same salt from the preorder step. " +
+        "Only call this after the preorder transaction has been confirmed on-chain (~10 minutes). " +
+        "Auto-detects contract version: V2 for .btc names, V1 for other namespaces.",
+      inputSchema: {
+        name: z
+          .string()
+          .describe("BNS name to register (must match the preordered name)"),
+        salt: z
+          .string()
+          .describe("The hex salt used in the preorder step (REQUIRED - must match exactly)"),
+      },
+    },
+    async ({ name, salt }) => {
+      try {
+        const bnsService = getBnsService(NETWORK);
+        const account = await getAccount();
+
+        // Perform the registration
+        const result = await bnsService.registerName(account, name, salt);
+
+        const fullName = name.endsWith(".btc") ? name : `${name}.btc`;
+
+        return createJsonResponse({
+          success: true,
+          step: "2 of 2 (register)",
+          name: fullName,
+          txid: result.txid,
+          network: NETWORK,
+          message: `Registration submitted! Once confirmed, "${fullName}" will be registered to your address.`,
         });
       } catch (error) {
         return createErrorResponse(error);
