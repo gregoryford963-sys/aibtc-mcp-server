@@ -1,4 +1,4 @@
-import { ClarityValue, bufferCV, uintCV, stringUtf8CV } from "@stacks/transactions";
+import { ClarityValue, bufferCV, uintCV, stringUtf8CV, hexToCV, cvToJSON } from "@stacks/transactions";
 import { HiroApiService, getHiroApi, BnsName, getBnsV2Api, BnsV2ApiService } from "./hiro-api.js";
 import { getContracts, parseContractId, type Network } from "../config/index.js";
 import { callContract, type Account, type TransferResult } from "../transactions/builder.js";
@@ -37,6 +37,16 @@ export interface BnsPrice {
 // BNS Service
 // ============================================================================
 
+/**
+ * Check if an error is a "not found" error (404)
+ */
+function isNotFoundError(error: unknown): boolean {
+  if (error instanceof Error) {
+    return error.message.includes("(404)") || error.message.includes("not found");
+  }
+  return false;
+}
+
 export class BnsService {
   private hiro: HiroApiService;
   private bnsV2: BnsV2ApiService;
@@ -69,7 +79,8 @@ export class BnsService {
           };
         }
         return null;
-      } catch {
+      } catch (error) {
+        if (!isNotFoundError(error)) throw error;
         // Name not found in BNS V2, try Hiro API as fallback (for legacy BNS V1 names)
       }
     }
@@ -84,7 +95,8 @@ export class BnsService {
         expireBlock: info.expire_block,
         zonefile: info.zonefile,
       };
-    } catch {
+    } catch (error) {
+      if (!isNotFoundError(error)) throw error;
       return null;
     }
   }
@@ -102,23 +114,22 @@ export class BnsService {
       if (v2Result.names) {
         allNames.push(...v2Result.names.map(n => n.full_name));
       }
-    } catch {
-      // BNS V2 lookup failed, continue with Hiro API
+    } catch (error) {
+      if (!isNotFoundError(error)) throw error;
     }
 
     // Get names from Hiro API (BNS V1)
     try {
       const v1Result = await this.hiro.getBnsNamesOwnedByAddress(address);
       if (v1Result.names) {
-        // Add only names not already in the list
         for (const name of v1Result.names) {
           if (!allNames.includes(name)) {
             allNames.push(name);
           }
         }
       }
-    } catch {
-      // Hiro API lookup failed
+    } catch (error) {
+      if (!isNotFoundError(error)) throw error;
     }
 
     return allNames;
@@ -142,13 +153,13 @@ export class BnsService {
             namespace: info.data.namespace_string || "btc",
             address: info.data.owner,
             expireBlock: parseInt(info.data.renewal_height, 10),
-            gracePeriod: 0, // BNS V2 doesn't have grace period in the same way
+            gracePeriod: 0,
             status: info.status,
-            lastTxId: "", // Not available in V2 response
+            lastTxId: "",
           };
         }
-      } catch {
-        // Name not found in BNS V2, try Hiro API
+      } catch (error) {
+        if (!isNotFoundError(error)) throw error;
       }
     }
 
@@ -166,7 +177,8 @@ export class BnsService {
         zonefileHash: info.zonefile_hash,
         lastTxId: info.last_txid,
       };
-    } catch {
+    } catch (error) {
+      if (!isNotFoundError(error)) throw error;
       return null;
     }
   }
@@ -184,8 +196,8 @@ export class BnsService {
       if (exists) {
         return false; // Name is taken
       }
-    } catch {
-      // Error checking BNS V2, continue to check V1
+    } catch (error) {
+      if (!isNotFoundError(error)) throw error;
     }
 
     // Also check Hiro API (BNS V1) for legacy names
@@ -194,8 +206,8 @@ export class BnsService {
       if (info && info.address) {
         return false; // Name is taken in V1
       }
-    } catch {
-      // Name not found in V1 either - it's available
+    } catch (error) {
+      if (!isNotFoundError(error)) throw error;
     }
 
     return true;
@@ -203,25 +215,46 @@ export class BnsService {
 
   /**
    * Get the price of a BNS name
+   * Uses appropriate contract based on namespace (V2 for .btc, V1 for others)
    */
-  async getPrice(name: string): Promise<BnsPrice | null> {
-    try {
-      const fullName = name.endsWith(".btc") ? name : `${name}.btc`;
-      const [baseName] = fullName.split(".");
+  async getPrice(name: string): Promise<BnsPrice> {
+    const fullName = name.includes(".") ? name : `${name}.btc`;
+    const [baseName, namespace] = fullName.split(".");
 
-      const price = await this.hiro.getBnsNamePrice(baseName);
+    // Get the appropriate contract for this namespace
+    const { address, name: contractName } = this.getBnsContract(namespace);
+    const contractId = `${address}.${contractName}`;
 
-      const amountMicroStx = price.amount;
-      const amountStx = (BigInt(amountMicroStx) / BigInt(1_000_000)).toString();
+    const result = await this.hiro.callReadOnlyFunction(
+      contractId,
+      "get-name-price",
+      [
+        bufferCV(Buffer.from(namespace)),
+        bufferCV(Buffer.from(baseName)),
+      ],
+      address
+    );
 
-      return {
-        units: price.units,
-        amount: amountMicroStx,
-        amountStx,
-      };
-    } catch {
-      return null;
+    if (!result.okay || !result.result) {
+      throw new Error(`Failed to get price for ${fullName}: ${result.cause || "unknown error"}`);
     }
+
+    // Parse the Clarity response
+    const decoded = cvToJSON(hexToCV(result.result));
+    // Handle nested response structure: V2 returns (ok (ok u<price>)), V1 returns (ok u<price>)
+    const priceValue = decoded?.value?.value?.value ?? decoded?.value?.value ?? decoded?.value ?? decoded;
+
+    if (priceValue === undefined || priceValue === null) {
+      throw new Error(`Failed to parse price response for ${fullName}`);
+    }
+
+    const amountMicroStx = String(priceValue);
+    const amountStx = (BigInt(amountMicroStx) / BigInt(1_000_000)).toString();
+    return {
+      units: "ustx",
+      amount: amountMicroStx,
+      amountStx,
+    };
   }
 
   /**
@@ -240,28 +273,69 @@ export class BnsService {
   }
 
   /**
-   * Register a new BNS name
-   * Note: BNS registration is a multi-step process involving preorder and register
+   * Get BNS contract based on namespace
+   * - V2 for .btc namespace (active registry)
+   * - V1 for other namespaces (legacy)
+   */
+  private getBnsContract(namespace: string): { address: string; name: string; version: 1 | 2 } {
+    if (namespace === "btc") {
+      // BNS V2 for .btc names
+      return {
+        address: "SP2QEZ06AGJ3RKJPBV14SY1V5BBFNAW33D96YPGZF",
+        name: "BNS-V2",
+        version: 2,
+      };
+    } else {
+      // BNS V1 for other namespaces
+      const { address, name } = parseContractId(this.contracts.BNS);
+      return { address, name, version: 1 };
+    }
+  }
+
+  /**
+   * Create hash160 (RIPEMD160(SHA256(data))) - 20 bytes
+   */
+  private async hash160(data: Buffer): Promise<Buffer> {
+    const crypto = await import("crypto");
+    const sha256 = crypto.createHash("sha256").update(data).digest();
+    const ripemd160 = crypto.createHash("ripemd160").update(sha256).digest();
+    return ripemd160;
+  }
+
+  /**
+   * Preorder a BNS name (Step 1 of 2)
+   * Creates a commitment with hashed name+salt to prevent front-running
+   * Auto-detects V1/V2 based on namespace (.btc uses V2, others use V1)
    */
   async preorderName(
     account: Account,
     name: string,
     salt: string
   ): Promise<TransferResult> {
-    const { address: contractAddress, name: contractName } = parseContractId(this.contracts.BNS);
-
-    const fullName = name.endsWith(".btc") ? name : `${name}.btc`;
+    const fullName = name.includes(".") ? name : `${name}.btc`;
     const [baseName, namespace] = fullName.split(".");
 
-    // Create the hashed salted name for preorder
-    const crypto = await import("crypto");
-    const hash = crypto.createHash("sha256")
-      .update(Buffer.from(fullName + salt))
-      .digest();
+    const { address: contractAddress, name: contractName, version } = this.getBnsContract(namespace);
+
+    // Get the price to burn
+    const price = await this.getPrice(fullName);
+    if (!price) {
+      throw new Error("Could not determine name price");
+    }
+    const stxToBurn = BigInt(price.amount);
+
+    // Create hash160 of (fully-qualified-name + salt)
+    // Salt must be 20 bytes max, pad or truncate
+    const saltBuffer = Buffer.alloc(20);
+    const saltBytes = Buffer.from(salt, "hex");
+    saltBytes.copy(saltBuffer, 0, 0, Math.min(20, saltBytes.length));
+
+    const fqnWithSalt = Buffer.concat([Buffer.from(fullName), saltBuffer]);
+    const hashedSaltedFqn = await this.hash160(fqnWithSalt);
 
     const functionArgs: ClarityValue[] = [
-      bufferCV(hash),
-      uintCV(0), // STX to burn (registration fee)
+      bufferCV(hashedSaltedFqn),
+      uintCV(stxToBurn),
     ];
 
     return callContract(account, {
@@ -273,25 +347,51 @@ export class BnsService {
   }
 
   /**
-   * Register a name after preorder
+   * Register a BNS name (Step 2 of 2)
+   * Must be called after preorder is confirmed on-chain
+   * Auto-detects V1/V2 based on namespace (.btc uses V2, others use V1)
+   *
+   * @param zonefileHash - Required for V1, ignored for V2. 20-byte hash of zonefile content.
    */
   async registerName(
     account: Account,
     name: string,
     salt: string,
-    zonefile?: string
+    zonefileHash?: string
   ): Promise<TransferResult> {
-    const { address: contractAddress, name: contractName } = parseContractId(this.contracts.BNS);
-
-    const fullName = name.endsWith(".btc") ? name : `${name}.btc`;
+    const fullName = name.includes(".") ? name : `${name}.btc`;
     const [baseName, namespace] = fullName.split(".");
 
-    const functionArgs: ClarityValue[] = [
-      bufferCV(Buffer.from(namespace)),
-      bufferCV(Buffer.from(baseName)),
-      bufferCV(Buffer.from(salt)),
-      zonefile ? bufferCV(Buffer.from(zonefile)) : bufferCV(Buffer.alloc(0)),
-    ];
+    const { address: contractAddress, name: contractName, version } = this.getBnsContract(namespace);
+
+    // Salt must be 20 bytes, pad or truncate
+    const saltBuffer = Buffer.alloc(20);
+    const saltBytes = Buffer.from(salt, "hex");
+    saltBytes.copy(saltBuffer, 0, 0, Math.min(20, saltBytes.length));
+
+    let functionArgs: ClarityValue[];
+
+    if (version === 2) {
+      // V2: (namespace, name, salt)
+      functionArgs = [
+        bufferCV(Buffer.from(namespace)),
+        bufferCV(Buffer.from(baseName)),
+        bufferCV(saltBuffer),
+      ];
+    } else {
+      // V1: (namespace, name, salt, zonefile-hash)
+      const zonefileHashBuffer = Buffer.alloc(20);
+      if (zonefileHash) {
+        const hashBytes = Buffer.from(zonefileHash, "hex");
+        hashBytes.copy(zonefileHashBuffer, 0, 0, Math.min(20, hashBytes.length));
+      }
+      functionArgs = [
+        bufferCV(Buffer.from(namespace)),
+        bufferCV(Buffer.from(baseName)),
+        bufferCV(saltBuffer),
+        bufferCV(zonefileHashBuffer),
+      ];
+    }
 
     return callContract(account, {
       contractAddress,
