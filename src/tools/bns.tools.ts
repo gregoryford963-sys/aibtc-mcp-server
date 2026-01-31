@@ -144,13 +144,6 @@ export function registerBnsTools(server: McpServer): void {
         const bnsService = getBnsService(NETWORK);
         const price = await bnsService.getPrice(name);
 
-        if (!price) {
-          return createJsonResponse({
-            name,
-            error: "Could not determine price",
-          });
-        }
-
         return createJsonResponse({
           name: name.endsWith(".btc") ? name : `${name}.btc`,
           network: NETWORK,

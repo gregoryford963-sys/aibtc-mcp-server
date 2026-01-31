@@ -37,6 +37,16 @@ export interface BnsPrice {
 // BNS Service
 // ============================================================================
 
+/**
+ * Check if an error is a "not found" error (404)
+ */
+function isNotFoundError(error: unknown): boolean {
+  if (error instanceof Error) {
+    return error.message.includes("(404)") || error.message.includes("not found");
+  }
+  return false;
+}
+
 export class BnsService {
   private hiro: HiroApiService;
   private bnsV2: BnsV2ApiService;
@@ -69,7 +79,8 @@ export class BnsService {
           };
         }
         return null;
-      } catch {
+      } catch (error) {
+        if (!isNotFoundError(error)) throw error;
         // Name not found in BNS V2, try Hiro API as fallback (for legacy BNS V1 names)
       }
     }
@@ -84,7 +95,8 @@ export class BnsService {
         expireBlock: info.expire_block,
         zonefile: info.zonefile,
       };
-    } catch {
+    } catch (error) {
+      if (!isNotFoundError(error)) throw error;
       return null;
     }
   }
@@ -102,23 +114,22 @@ export class BnsService {
       if (v2Result.names) {
         allNames.push(...v2Result.names.map(n => n.full_name));
       }
-    } catch {
-      // BNS V2 lookup failed, continue with Hiro API
+    } catch (error) {
+      if (!isNotFoundError(error)) throw error;
     }
 
     // Get names from Hiro API (BNS V1)
     try {
       const v1Result = await this.hiro.getBnsNamesOwnedByAddress(address);
       if (v1Result.names) {
-        // Add only names not already in the list
         for (const name of v1Result.names) {
           if (!allNames.includes(name)) {
             allNames.push(name);
           }
         }
       }
-    } catch {
-      // Hiro API lookup failed
+    } catch (error) {
+      if (!isNotFoundError(error)) throw error;
     }
 
     return allNames;
@@ -142,13 +153,13 @@ export class BnsService {
             namespace: info.data.namespace_string || "btc",
             address: info.data.owner,
             expireBlock: parseInt(info.data.renewal_height, 10),
-            gracePeriod: 0, // BNS V2 doesn't have grace period in the same way
+            gracePeriod: 0,
             status: info.status,
-            lastTxId: "", // Not available in V2 response
+            lastTxId: "",
           };
         }
-      } catch {
-        // Name not found in BNS V2, try Hiro API
+      } catch (error) {
+        if (!isNotFoundError(error)) throw error;
       }
     }
 
@@ -166,7 +177,8 @@ export class BnsService {
         zonefileHash: info.zonefile_hash,
         lastTxId: info.last_txid,
       };
-    } catch {
+    } catch (error) {
+      if (!isNotFoundError(error)) throw error;
       return null;
     }
   }
@@ -184,8 +196,8 @@ export class BnsService {
       if (exists) {
         return false; // Name is taken
       }
-    } catch {
-      // Error checking BNS V2, continue to check V1
+    } catch (error) {
+      if (!isNotFoundError(error)) throw error;
     }
 
     // Also check Hiro API (BNS V1) for legacy names
@@ -194,8 +206,8 @@ export class BnsService {
       if (info && info.address) {
         return false; // Name is taken in V1
       }
-    } catch {
-      // Name not found in V1 either - it's available
+    } catch (error) {
+      if (!isNotFoundError(error)) throw error;
     }
 
     return true;
@@ -205,46 +217,44 @@ export class BnsService {
    * Get the price of a BNS name
    * Uses appropriate contract based on namespace (V2 for .btc, V1 for others)
    */
-  async getPrice(name: string): Promise<BnsPrice | null> {
+  async getPrice(name: string): Promise<BnsPrice> {
     const fullName = name.includes(".") ? name : `${name}.btc`;
     const [baseName, namespace] = fullName.split(".");
 
     // Get the appropriate contract for this namespace
-    const { address, name: contractName, version } = this.getBnsContract(namespace);
+    const { address, name: contractName } = this.getBnsContract(namespace);
     const contractId = `${address}.${contractName}`;
 
-    try {
-      const result = await this.hiro.callReadOnlyFunction(
-        contractId,
-        "get-name-price",
-        [
-          bufferCV(Buffer.from(namespace)),
-          bufferCV(Buffer.from(baseName)),
-        ],
-        address
-      );
+    const result = await this.hiro.callReadOnlyFunction(
+      contractId,
+      "get-name-price",
+      [
+        bufferCV(Buffer.from(namespace)),
+        bufferCV(Buffer.from(baseName)),
+      ],
+      address
+    );
 
-      if (result.okay && result.result) {
-        // Parse the Clarity response
-        const decoded = cvToJSON(hexToCV(result.result));
-        // Handle nested response structure: V2 returns (ok (ok u<price>)), V1 returns (ok u<price>)
-        const priceValue = decoded?.value?.value?.value ?? decoded?.value?.value ?? decoded?.value ?? decoded;
-
-        if (priceValue !== undefined && priceValue !== null) {
-          const amountMicroStx = String(priceValue);
-          const amountStx = (BigInt(amountMicroStx) / BigInt(1_000_000)).toString();
-          return {
-            units: "ustx",
-            amount: amountMicroStx,
-            amountStx,
-          };
-        }
-      }
-    } catch {
-      // Contract call failed
+    if (!result.okay || !result.result) {
+      throw new Error(`Failed to get price for ${fullName}: ${result.cause || "unknown error"}`);
     }
 
-    return null;
+    // Parse the Clarity response
+    const decoded = cvToJSON(hexToCV(result.result));
+    // Handle nested response structure: V2 returns (ok (ok u<price>)), V1 returns (ok u<price>)
+    const priceValue = decoded?.value?.value?.value ?? decoded?.value?.value ?? decoded?.value ?? decoded;
+
+    if (priceValue === undefined || priceValue === null) {
+      throw new Error(`Failed to parse price response for ${fullName}`);
+    }
+
+    const amountMicroStx = String(priceValue);
+    const amountStx = (BigInt(amountMicroStx) / BigInt(1_000_000)).toString();
+    return {
+      units: "ustx",
+      amount: amountMicroStx,
+      amountStx,
+    };
   }
 
   /**
