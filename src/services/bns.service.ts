@@ -1,4 +1,4 @@
-import { ClarityValue, bufferCV, uintCV, stringUtf8CV } from "@stacks/transactions";
+import { ClarityValue, bufferCV, uintCV, stringUtf8CV, hexToCV, cvToJSON } from "@stacks/transactions";
 import { HiroApiService, getHiroApi, BnsName, getBnsV2Api, BnsV2ApiService } from "./hiro-api.js";
 import { getContracts, parseContractId, type Network } from "../config/index.js";
 import { callContract, type Account, type TransferResult } from "../transactions/builder.js";
@@ -203,14 +203,51 @@ export class BnsService {
 
   /**
    * Get the price of a BNS name
+   * Uses BNS V2 contract for .btc names, falls back to Hiro API for legacy
    */
   async getPrice(name: string): Promise<BnsPrice | null> {
+    const fullName = name.endsWith(".btc") ? name : `${name}.btc`;
+    const [baseName, namespace] = fullName.split(".");
+
+    // For .btc names, use BNS V2 contract
+    if (namespace === "btc") {
+      try {
+        const bnsV2Contract = "SP2QEZ06AGJ3RKJPBV14SY1V5BBFNAW33D96YPGZF.BNS-V2";
+        const result = await this.hiro.callReadOnlyFunction(
+          bnsV2Contract,
+          "get-name-price",
+          [
+            bufferCV(Buffer.from(namespace)),
+            bufferCV(Buffer.from(baseName)),
+          ],
+          "SP2QEZ06AGJ3RKJPBV14SY1V5BBFNAW33D96YPGZF"
+        );
+
+        if (result.okay && result.result) {
+          // Parse the Clarity response: (ok (ok u<price>))
+          const decoded = cvToJSON(hexToCV(result.result));
+          // Handle nested response: { value: { value: { value: <price> } } }
+          const priceValue = decoded?.value?.value?.value ?? decoded?.value?.value ?? decoded?.value ?? decoded;
+
+          if (priceValue !== undefined && priceValue !== null) {
+            // Handle string (like "2000000") or number
+            const amountMicroStx = String(priceValue);
+            const amountStx = (BigInt(amountMicroStx) / BigInt(1_000_000)).toString();
+            return {
+              units: "ustx",
+              amount: amountMicroStx,
+              amountStx,
+            };
+          }
+        }
+      } catch {
+        // Fall through to Hiro API
+      }
+    }
+
+    // Fallback to Hiro API for legacy BNS V1
     try {
-      const fullName = name.endsWith(".btc") ? name : `${name}.btc`;
-      const [baseName] = fullName.split(".");
-
       const price = await this.hiro.getBnsNamePrice(baseName);
-
       const amountMicroStx = price.amount;
       const amountStx = (BigInt(amountMicroStx) / BigInt(1_000_000)).toString();
 
@@ -240,28 +277,69 @@ export class BnsService {
   }
 
   /**
-   * Register a new BNS name
-   * Note: BNS registration is a multi-step process involving preorder and register
+   * Get BNS contract based on namespace
+   * - V2 for .btc namespace (active registry)
+   * - V1 for other namespaces (legacy)
+   */
+  private getBnsContract(namespace: string): { address: string; name: string; version: 1 | 2 } {
+    if (namespace === "btc") {
+      // BNS V2 for .btc names
+      return {
+        address: "SP2QEZ06AGJ3RKJPBV14SY1V5BBFNAW33D96YPGZF",
+        name: "BNS-V2",
+        version: 2,
+      };
+    } else {
+      // BNS V1 for other namespaces
+      const { address, name } = parseContractId(this.contracts.BNS);
+      return { address, name, version: 1 };
+    }
+  }
+
+  /**
+   * Create hash160 (RIPEMD160(SHA256(data))) - 20 bytes
+   */
+  private async hash160(data: Buffer): Promise<Buffer> {
+    const crypto = await import("crypto");
+    const sha256 = crypto.createHash("sha256").update(data).digest();
+    const ripemd160 = crypto.createHash("ripemd160").update(sha256).digest();
+    return ripemd160;
+  }
+
+  /**
+   * Preorder a BNS name (Step 1 of 2)
+   * Creates a commitment with hashed name+salt to prevent front-running
+   * Auto-detects V1/V2 based on namespace (.btc uses V2, others use V1)
    */
   async preorderName(
     account: Account,
     name: string,
     salt: string
   ): Promise<TransferResult> {
-    const { address: contractAddress, name: contractName } = parseContractId(this.contracts.BNS);
-
-    const fullName = name.endsWith(".btc") ? name : `${name}.btc`;
+    const fullName = name.includes(".") ? name : `${name}.btc`;
     const [baseName, namespace] = fullName.split(".");
 
-    // Create the hashed salted name for preorder
-    const crypto = await import("crypto");
-    const hash = crypto.createHash("sha256")
-      .update(Buffer.from(fullName + salt))
-      .digest();
+    const { address: contractAddress, name: contractName, version } = this.getBnsContract(namespace);
+
+    // Get the price to burn
+    const price = await this.getPrice(fullName);
+    if (!price) {
+      throw new Error("Could not determine name price");
+    }
+    const stxToBurn = BigInt(price.amount);
+
+    // Create hash160 of (fully-qualified-name + salt)
+    // Salt must be 20 bytes max, pad or truncate
+    const saltBuffer = Buffer.alloc(20);
+    const saltBytes = Buffer.from(salt, "hex");
+    saltBytes.copy(saltBuffer, 0, 0, Math.min(20, saltBytes.length));
+
+    const fqnWithSalt = Buffer.concat([Buffer.from(fullName), saltBuffer]);
+    const hashedSaltedFqn = await this.hash160(fqnWithSalt);
 
     const functionArgs: ClarityValue[] = [
-      bufferCV(hash),
-      uintCV(0), // STX to burn (registration fee)
+      bufferCV(hashedSaltedFqn),
+      uintCV(stxToBurn),
     ];
 
     return callContract(account, {
@@ -273,25 +351,51 @@ export class BnsService {
   }
 
   /**
-   * Register a name after preorder
+   * Register a BNS name (Step 2 of 2)
+   * Must be called after preorder is confirmed on-chain
+   * Auto-detects V1/V2 based on namespace (.btc uses V2, others use V1)
+   *
+   * @param zonefileHash - Required for V1, ignored for V2. 20-byte hash of zonefile content.
    */
   async registerName(
     account: Account,
     name: string,
     salt: string,
-    zonefile?: string
+    zonefileHash?: string
   ): Promise<TransferResult> {
-    const { address: contractAddress, name: contractName } = parseContractId(this.contracts.BNS);
-
-    const fullName = name.endsWith(".btc") ? name : `${name}.btc`;
+    const fullName = name.includes(".") ? name : `${name}.btc`;
     const [baseName, namespace] = fullName.split(".");
 
-    const functionArgs: ClarityValue[] = [
-      bufferCV(Buffer.from(namespace)),
-      bufferCV(Buffer.from(baseName)),
-      bufferCV(Buffer.from(salt)),
-      zonefile ? bufferCV(Buffer.from(zonefile)) : bufferCV(Buffer.alloc(0)),
-    ];
+    const { address: contractAddress, name: contractName, version } = this.getBnsContract(namespace);
+
+    // Salt must be 20 bytes, pad or truncate
+    const saltBuffer = Buffer.alloc(20);
+    const saltBytes = Buffer.from(salt, "hex");
+    saltBytes.copy(saltBuffer, 0, 0, Math.min(20, saltBytes.length));
+
+    let functionArgs: ClarityValue[];
+
+    if (version === 2) {
+      // V2: (namespace, name, salt)
+      functionArgs = [
+        bufferCV(Buffer.from(namespace)),
+        bufferCV(Buffer.from(baseName)),
+        bufferCV(saltBuffer),
+      ];
+    } else {
+      // V1: (namespace, name, salt, zonefile-hash)
+      const zonefileHashBuffer = Buffer.alloc(20);
+      if (zonefileHash) {
+        const hashBytes = Buffer.from(zonefileHash, "hex");
+        hashBytes.copy(zonefileHashBuffer, 0, 0, Math.min(20, hashBytes.length));
+      }
+      functionArgs = [
+        bufferCV(Buffer.from(namespace)),
+        bufferCV(Buffer.from(baseName)),
+        bufferCV(saltBuffer),
+        bufferCV(zonefileHashBuffer),
+      ];
+    }
 
     return callContract(account, {
       contractAddress,
