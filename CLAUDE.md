@@ -87,11 +87,13 @@ aibtc-mcp-server MCP Server (src/index.ts)
 - `src/services/wallet-manager.ts` - Managed wallet creation, encryption, and session management
 - `src/services/defi.service.ts` - ALEX DEX (via alex-sdk) and Zest Protocol integrations
 - `src/services/bitflow.service.ts` - Bitflow DEX integration (via @bitflowlabs/core-sdk)
+- `src/services/mempool-api.ts` - mempool.space API client for Bitcoin UTXO and fee data
 - `src/endpoints/registry.ts` - Known x402 endpoint registry from both API sources
 - `src/services/bns.service.ts` - BNS name resolution (supports both V1 and V2)
 - `src/services/hiro-api.ts` - Hiro API client + BNS V2 API client
 - `src/config/contracts.ts` - Contract addresses and Zest asset configuration (LP tokens, oracles, decimals)
 - `src/services/scaffold.service.ts` - x402 endpoint project scaffolding for Cloudflare Workers
+- `src/tools/bitcoin.tools.ts` - Bitcoin L1 read-only tools (balance, fees, UTXOs)
 - `src/tools/pillar.tools.ts` - Pillar smart wallet tools (handoff model)
 - `src/services/pillar-api.service.ts` - Pillar API client
 - `src/config/pillar.ts` - Pillar configuration (API URL, API key)
@@ -169,6 +171,26 @@ This automatically configures `~/.claude.json` with the MCP server. The `@latest
 - `wallet_delete` - Permanently delete a wallet
 - `wallet_export` - Export mnemonic (with security warning)
 - `wallet_status` - Get current wallet/session status
+
+### Bitcoin L1 (Read-Only)
+
+Tools for querying Bitcoin L1 blockchain data via mempool.space API:
+
+- `get_btc_balance` - Get BTC balance for any Bitcoin address (total, confirmed, unconfirmed)
+- `get_btc_fees` - Get current fee estimates (fast ~10min, medium ~30min, slow ~1hr) in sat/vB
+- `get_btc_utxos` - List UTXOs for a Bitcoin address (useful for debugging/transparency)
+
+**Notes:**
+- All tools work on mainnet (`bc1...` addresses) or testnet (`tb1...` addresses) based on NETWORK config
+- If no address is provided, tools use the wallet's Bitcoin address (requires wallet unlock)
+- Data sourced from mempool.space public API (no authentication required)
+
+**Example Usage:**
+| Request | Action |
+|---------|--------|
+| "What's my BTC balance?" | `get_btc_balance` (uses wallet's btcAddress) |
+| "Check BTC fees" | `get_btc_fees` |
+| "Show UTXOs for bc1q..." | `get_btc_utxos` with address |
 
 ### Direct Stacks Transactions
 - `transfer_stx` - Transfer STX tokens to a recipient (signs and broadcasts)
