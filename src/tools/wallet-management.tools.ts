@@ -39,11 +39,8 @@ IMPORTANT: Save the mnemonic securely - it will only be shown once!`,
           message:
             "Wallet created! Your Bitcoin address is ready for use. Save the mnemonic securely.",
           walletId: result.walletId,
-          bitcoinAddress: result.bitcoinAddress,
-          stacksAddress: result.stacksAddress,
-          // Deprecated fields for backward compatibility
-          address: result.address,
           btcAddress: result.btcAddress,
+          address: result.address,
           network: network || NETWORK,
           "---": "",
           mnemonic: result.mnemonic,
@@ -92,11 +89,8 @@ The wallet is encrypted locally and stored in ~/.aibtc/.`,
           success: true,
           message: "Wallet imported! Bitcoin and Stacks transactions are ready.",
           walletId: result.walletId,
-          bitcoinAddress: result.bitcoinAddress,
-          stacksAddress: result.stacksAddress,
-          // Deprecated fields for backward compatibility
-          address: result.address,
           btcAddress: result.btcAddress,
+          address: result.address,
           network: network || NETWORK,
         });
       } catch (error) {
@@ -145,11 +139,8 @@ If no wallet ID is provided, unlocks the active wallet.`,
           success: true,
           message: "Wallet unlocked. Bitcoin and Stacks transactions enabled.",
           walletId: targetWalletId,
-          bitcoinAddress: account.bitcoinAddress,
-          stacksAddress: account.stacksAddress,
-          // Deprecated fields for backward compatibility
-          address: account.address,
           btcAddress: account.btcAddress,
+          address: account.address,
           network: account.network,
         });
       } catch (error) {
@@ -212,9 +203,7 @@ If no wallet ID is provided, unlocks the active wallet.`,
           wallets: wallets.map((w) => ({
             id: w.id,
             name: w.name,
-            bitcoinAddress: w.bitcoinAddress,
-            stacksAddress: w.stacksAddress,
-            // Deprecated field for backward compatibility
+            btcAddress: w.btcAddress,
             address: w.address,
             network: w.network,
             createdAt: w.createdAt,
@@ -256,9 +245,7 @@ Note: The new wallet will need to be unlocked before use.`,
           message:
             "Switched to wallet. Use wallet_unlock to unlock it for transactions.",
           activeWalletId: walletId,
-          bitcoinAddress: wallet?.bitcoinAddress,
-          stacksAddress: wallet?.stacksAddress,
-          // Deprecated field for backward compatibility
+          btcAddress: wallet?.btcAddress,
           address: wallet?.address,
           network: wallet?.network,
         });
@@ -304,9 +291,7 @@ WARNING: This cannot be undone! Make sure you have backed up your mnemonic.`,
           success: true,
           message: "Wallet deleted permanently.",
           deletedWalletId: walletId,
-          deletedBitcoinAddress: wallet?.bitcoinAddress,
-          deletedStacksAddress: wallet?.stacksAddress,
-          // Deprecated field for backward compatibility
+          deletedBtcAddress: wallet?.btcAddress,
           deletedAddress: wallet?.address,
         });
       } catch (error) {
@@ -457,11 +442,8 @@ WARNING: Only use this in a secure environment! Anyone with the mnemonic can acc
             activeWallet = {
               id: wallet.id,
               name: wallet.name,
-              bitcoinAddress: wallet.bitcoinAddress,
-              stacksAddress: wallet.stacksAddress,
-              // Deprecated fields for backward compatibility
-              address: wallet.address,
               btcAddress: wallet.btcAddress,
+              address: wallet.address,
               network: wallet.network,
             };
           }
@@ -478,11 +460,8 @@ WARNING: Only use this in a secure environment! Anyone with the mnemonic can acc
         if (sessionInfo) {
           response.wallet = {
             id: sessionInfo.walletId,
-            bitcoinAddress: sessionInfo.bitcoinAddress,
-            stacksAddress: sessionInfo.stacksAddress,
-            // Deprecated fields for backward compatibility
-            address: sessionInfo.address,
             btcAddress: sessionInfo.btcAddress,
+            address: sessionInfo.address,
             sessionExpiresAt: sessionInfo.expiresAt?.toISOString() || "never",
           };
         } else if (activeWallet) {
@@ -494,11 +473,8 @@ WARNING: Only use this in a secure environment! Anyone with the mnemonic can acc
           response.availableWallets = wallets.map((w) => ({
             id: w.id,
             name: w.name,
-            bitcoinAddress: w.bitcoinAddress,
-            stacksAddress: w.stacksAddress,
-            // Deprecated fields for backward compatibility
-            address: w.address,
             btcAddress: w.btcAddress,
+            address: w.address,
           }));
         }
 

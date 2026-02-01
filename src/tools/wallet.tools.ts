@@ -19,23 +19,25 @@ export function registerWalletTools(server: McpServer): void {
         const walletManager = getWalletManager();
         const hasWallets = await walletManager.hasWallets();
         const sessionInfo = walletManager.getSessionInfo();
-        const hasMnemonic = !!process.env.CLIENT_MNEMONIC;
 
         // Try to get wallet address
         try {
-          const stacksAddress = await getWalletAddress();
-          const bitcoinAddress = sessionInfo?.bitcoinAddress;
-          return createJsonResponse({
+          const address = await getWalletAddress();
+          const btcAddress = sessionInfo?.btcAddress;
+          // Only include btcAddress if available (managed wallets only)
+          const response: Record<string, unknown> = {
             status: "ready",
-            message: "Wallet ready. Bitcoin and Stacks transactions enabled.",
-            bitcoinAddress,
-            stacksAddress,
-            // Deprecated fields for backward compatibility
-            address: stacksAddress,
-            btcAddress: sessionInfo?.btcAddress,
+            message: btcAddress
+              ? "Wallet ready. Bitcoin and Stacks transactions enabled."
+              : "Wallet ready. Stacks transactions enabled.",
+            address,
             network: NETWORK,
             apiUrl: API_URL,
-          });
+          };
+          if (btcAddress) {
+            response.btcAddress = btcAddress;
+          }
+          return createJsonResponse(response);
         } catch {
           // No wallet available - provide helpful guidance
           if (hasWallets) {
@@ -48,11 +50,8 @@ export function registerWalletTools(server: McpServer): void {
               wallets: wallets.map((w) => ({
                 id: w.id,
                 name: w.name,
-                bitcoinAddress: w.bitcoinAddress,
-                stacksAddress: w.stacksAddress,
-                // Deprecated fields for backward compatibility
-                address: w.address,
                 btcAddress: w.btcAddress,
+                address: w.address,
                 network: w.network,
               })),
               network: NETWORK,

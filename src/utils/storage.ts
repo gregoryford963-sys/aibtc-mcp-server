@@ -31,48 +31,12 @@ async function migrateStorage(): Promise<void> {
 }
 
 /**
- * Migrate wallet metadata to use new Bitcoin-first field names.
- * Copies legacy fields (btcAddress, address) to new fields (bitcoinAddress, stacksAddress)
- * for existing wallets that were created before the v2.0 naming convention.
- */
-async function migrateWalletMetadata(): Promise<void> {
-  try {
-    const index = await readWalletIndex();
-    let needsWrite = false;
-
-    for (const wallet of index.wallets) {
-      // Migrate btcAddress -> bitcoinAddress
-      if (wallet.btcAddress && !wallet.bitcoinAddress) {
-        wallet.bitcoinAddress = wallet.btcAddress;
-        needsWrite = true;
-      }
-      // Migrate address -> stacksAddress
-      if (wallet.address && !wallet.stacksAddress) {
-        wallet.stacksAddress = wallet.address;
-        needsWrite = true;
-      }
-    }
-
-    if (needsWrite) {
-      await writeWalletIndex(index);
-    }
-  } catch (error) {
-    // Silently ignore migration errors - index may not exist yet
-  }
-}
-
-/**
  * Common address fields for wallet-related types.
- * Includes both new Bitcoin-first naming and deprecated fields for backward compatibility.
  */
 export interface WalletAddresses {
-  /** Bitcoin L1 address (primary). Added in v2.0. */
-  bitcoinAddress?: string;
-  /** Stacks L2 address. Added in v2.0. */
-  stacksAddress?: string;
-  /** @deprecated Use stacksAddress instead. Required for backward compatibility with existing code. */
+  /** Stacks L2 address */
   address: string;
-  /** @deprecated Use bitcoinAddress instead. */
+  /** Bitcoin L1 address */
   btcAddress?: string;
 }
 
@@ -140,7 +104,6 @@ export async function storageExists(): Promise<boolean> {
  */
 export async function initializeStorage(): Promise<void> {
   await migrateStorage();
-  await migrateWalletMetadata();
   // Create directories
   await fs.mkdir(WALLETS_DIR, { recursive: true, mode: 0o700 });
 

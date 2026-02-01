@@ -119,8 +119,6 @@ class WalletManager {
     const metadata: WalletMetadata = {
       id: walletId,
       name,
-      bitcoinAddress,
-      stacksAddress,
       address: stacksAddress,
       btcAddress: bitcoinAddress,
       network: walletNetwork,
@@ -134,8 +132,6 @@ class WalletManager {
 
     return {
       walletId,
-      bitcoinAddress,
-      stacksAddress,
       address: stacksAddress,
       btcAddress: bitcoinAddress,
     };
@@ -222,8 +218,6 @@ class WalletManager {
     } = deriveBitcoinKeyPair(mnemonic, walletMeta.network);
 
     const account: Account = {
-      bitcoinAddress: btcAddress,
-      stacksAddress: address,
       address,
       btcAddress,
       privateKey: stacksAccount.stxPrivateKey,
@@ -313,8 +307,6 @@ class WalletManager {
 
     return {
       walletId: this.session.walletId,
-      bitcoinAddress: this.session.account.bitcoinAddress,
-      stacksAddress: this.session.account.stacksAddress,
       address: this.session.account.address,
       btcAddress: this.session.account.btcAddress,
       expiresAt: this.session.expiresAt,
