@@ -19,20 +19,25 @@ export function registerWalletTools(server: McpServer): void {
         const walletManager = getWalletManager();
         const hasWallets = await walletManager.hasWallets();
         const sessionInfo = walletManager.getSessionInfo();
-        const hasMnemonic = !!process.env.CLIENT_MNEMONIC;
 
         // Try to get wallet address
         try {
-          const stacksAddress = await getWalletAddress();
+          const address = await getWalletAddress();
           const btcAddress = sessionInfo?.btcAddress;
-          return createJsonResponse({
+          // Only include btcAddress if available (managed wallets only)
+          const response: Record<string, unknown> = {
             status: "ready",
-            message: "Wallet ready. Bitcoin and Stacks transactions enabled.",
-            btcAddress,
-            address: stacksAddress,
+            message: btcAddress
+              ? "Wallet ready. Bitcoin and Stacks transactions enabled."
+              : "Wallet ready. Stacks transactions enabled.",
+            address,
             network: NETWORK,
             apiUrl: API_URL,
-          });
+          };
+          if (btcAddress) {
+            response.btcAddress = btcAddress;
+          }
+          return createJsonResponse(response);
         } catch {
           // No wallet available - provide helpful guidance
           if (hasWallets) {
