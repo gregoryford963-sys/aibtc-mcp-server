@@ -184,21 +184,21 @@ Tools for Bitcoin L1 blockchain operations via mempool.space API:
 
 **Notes:**
 - All tools work on mainnet (`bc1...` addresses) or testnet (`tb1...` addresses) based on NETWORK config
-- Read operations can use any address or fall back to wallet's `bitcoinAddress`
+- Read operations can use any address or fall back to wallet's `btcAddress`
 - Write operations require an unlocked wallet with BTC balance
 - Uses P2WPKH (native SegWit) transactions for optimal fees
 - Change is sent back to the sender address
 
 ### Wallet Info & Balance
-- `get_wallet_info` - Get wallet info (returns `bitcoinAddress` first, then `stacksAddress`)
+- `get_wallet_info` - Get wallet info (returns `btcAddress` and `address`)
 - `get_stx_balance` - Get STX balance for any Stacks address
 
 ### Wallet Management
-- `wallet_create` - Generate a new wallet (returns `bitcoinAddress` and `stacksAddress`)
+- `wallet_create` - Generate a new wallet (returns `btcAddress` and `address`)
 - `wallet_import` - Import an existing wallet from mnemonic
 - `wallet_unlock` - Unlock a wallet for transactions (requires password)
 - `wallet_lock` - Lock the wallet (clear from memory)
-- `wallet_list` - List all available wallets (shows `bitcoinAddress` first per wallet)
+- `wallet_list` - List all available wallets
 - `wallet_switch` - Switch active wallet
 - `wallet_delete` - Permanently delete a wallet
 - `wallet_export` - Export mnemonic (with security warning)
@@ -547,10 +547,10 @@ When a user asks for something:
 |---------|--------|
 | **Bitcoin L1 (Primary)** | |
 | "What's my balance?" | `get_btc_balance` (Bitcoin-first default) |
-| "What's my BTC balance?" | `get_btc_balance` (uses wallet's bitcoinAddress) |
+| "What's my BTC balance?" | `get_btc_balance` (uses wallet's btcAddress) |
 | "Send 50000 sats to bc1q..." | `transfer_btc` with recipient, amount=50000 |
 | "Transfer 0.001 BTC with fast fees" | `transfer_btc` with amount=100000, feeRate="fast" |
-| "Show my wallet" | `get_wallet_info` (returns bitcoinAddress first) |
+| "Show my wallet" | `get_wallet_info` (returns btcAddress and address) |
 | **Stacks L2** | |
 | "What's my STX balance?" | `get_stx_balance` (explicit L2 request) |
 | "Send 2 STX to ST1..." | `transfer_stx` with amount "2000000" |
