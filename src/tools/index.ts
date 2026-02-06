@@ -7,6 +7,9 @@ import { registerWalletTools } from "./wallet.tools.js";
 import { registerWalletManagementTools } from "./wallet-management.tools.js";
 import { registerSigningTools } from "./signing.tools.js";
 
+// Layer 1.5: sBTC Bridge (BTC ↔ sBTC)
+import { registerSbtcBridgeTools } from "./sbtc-bridge.tools.js";
+
 // Layer 2: Stacks L2 (On-Demand)
 import { registerTransferTools } from "./transfer.tools.js";
 import { registerContractTools } from "./contract.tools.js";
@@ -52,6 +55,12 @@ export function registerAllTools(server: McpServer): void {
   registerWalletTools(server);
   registerWalletManagementTools(server);
   registerSigningTools(server);
+
+  // =========================================================================
+  // Layer 1.5: sBTC Bridge (BTC ↔ sBTC)
+  // Bridge between Bitcoin L1 and sBTC on Stacks via Emily API
+  // =========================================================================
+  registerSbtcBridgeTools(server);
 
   // =========================================================================
   // Layer 2: Stacks L2 (On-Demand)
