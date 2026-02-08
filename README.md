@@ -3,7 +3,7 @@
 [![npm version](https://img.shields.io/npm/v/@aibtc/mcp-server.svg)](https://www.npmjs.com/package/@aibtc/mcp-server)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-A Bitcoin-first MCP (Model Context Protocol) server that gives agents their own wallet for Bitcoin L1 operations, with Stacks L2 support for DeFi and x402 paid API endpoints.
+Bitcoin-native MCP server for AI agents: BTC/STX wallets, DeFi yield, sBTC peg, NFTs, and x402 payments.
 
 ## Features
 
