@@ -1,7 +1,8 @@
 {
   "name": "@aibtc/mcp-server",
   "version": "1.13.1",
-  "description": "Claude Code MCP server for x402 endpoint discovery and execution with Stacks wallet integration",
+  "description": "Bitcoin-first MCP server for BTC/STX wallets, DeFi, sBTC, NFTs, and x402 paid APIs.",
+  "mcpName": "io.github.aibtcdev/mcp-server",
   "type": "module",
   "main": "dist/index.js",
   "bin": {
