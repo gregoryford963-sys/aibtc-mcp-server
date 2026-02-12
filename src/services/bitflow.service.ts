@@ -304,7 +304,7 @@ export class BitflowService {
 
     return {
       txid: broadcastResult.txid,
-      rawTx: Buffer.from(transaction.serialize()).toString("hex"),
+      rawTx: transaction.serialize(),
     };
   }
 
