@@ -7,6 +7,7 @@ import {
   PostConditionMode,
   PostCondition,
 } from "@stacks/transactions";
+import { hexToBytes } from "@stacks/common";
 import { getStacksNetwork, getApiBaseUrl, type Network } from "../config/networks.js";
 import type { WalletAddresses } from "../utils/storage.js";
 
@@ -229,14 +230,14 @@ export async function broadcastSignedTransaction(
   network: Network
 ): Promise<{ txid: string }> {
   const baseUrl = getApiBaseUrl(network);
-  const txBuffer = Buffer.from(signedTx, "hex");
+  const txBytes = Buffer.from(hexToBytes(signedTx));
 
   const response = await fetch(`${baseUrl}/v2/transactions`, {
     method: "POST",
     headers: {
       "Content-Type": "application/octet-stream",
     },
-    body: txBuffer,
+    body: txBytes,
   });
 
   if (!response.ok) {
