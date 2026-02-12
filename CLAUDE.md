@@ -111,6 +111,8 @@ aibtc-mcp-server MCP Server (src/index.ts)
 - `src/services/signing-key.service.ts` - Local signing key management for Pillar direct mode
 - `src/config/pillar.ts` - Pillar configuration (API URL, API key)
 - `src/utils/fee.ts` - Fee utility for resolving preset strings (low/medium/high) to micro-STX
+- `src/services/sbtc-deposit.service.ts` - sBTC deposit transaction building and Emily API integration
+- `src/tools/sbtc.tools.ts` - sBTC deposit and status tools
 
 ### BNS V1 vs V2
 
@@ -148,6 +150,22 @@ The ordinal indexer classifies Bitcoin UTXOs as cardinal (safe to spend) or ordi
 **Tools:**
 - `get_cardinal_utxos` - Returns UTXOs safe for regular transfers
 - `get_ordinal_utxos` - Returns UTXOs containing inscriptions
+
+### sBTC Bridge Deposit Flow
+
+The sBTC bridge enables Bitcoin L1 to be deposited and minted as sBTC on Stacks L2:
+
+1. **Transaction Construction**: Uses the `sbtc` npm package to build a Taproot P2TR deposit transaction with:
+   - Deposit script: Allows sBTC signers to peg-in BTC
+   - Reclaim script: Allows user to reclaim BTC after lock time (default: 950 blocks ≈ 6.6 days)
+2. **Signing**: Uses the sbtc package's internal @scure/btc-signer (workaround for version mismatch with bitcoin-builder)
+3. **Broadcasting**: Sends transaction to mempool.space API
+4. **Emily API**: Notifies sBTC signers via Emily API for deposit processing
+5. **Status Tracking**: Poll Emily API with `sbtc_deposit_status` to monitor peg-in progress
+
+**Key Files**:
+- `src/services/sbtc-deposit.service.ts` - sBTC deposit transaction building and Emily API integration
+- `src/tools/sbtc.tools.ts` - sBTC deposit and status tools
 
 ### x402 Payment Flow
 
@@ -321,7 +339,16 @@ Tools for transferring sBTC, SIP-010 tokens, and SIP-009 NFTs. All write operati
 - `sbtc_get_balance` - Get sBTC balance for any address
 - `sbtc_transfer` - Transfer sBTC (8 decimals, amount in satoshis)
   - `fee`: Optional fee preset or micro-STX amount
-- `sbtc_get_deposit_info` - Get BTC deposit info for sBTC
+- `sbtc_deposit` - Deposit BTC to receive sBTC on Stacks L2. Builds, signs, and broadcasts a Bitcoin deposit transaction to the sBTC bridge. Uses cardinal UTXOs (safe to spend - no inscriptions) by default on mainnet.
+  - `amount`: Amount to deposit in satoshis (1 BTC = 100,000,000 satoshis)
+  - `feeRate`: "fast" | "medium" | "slow" or custom sat/vB number (default: "medium")
+  - `maxSignerFee`: Maximum fee sBTC signers can charge in satoshis (default: 80,000)
+  - `reclaimLockTime`: Bitcoin blocks until reclaim is available (default: 950)
+  - `includeOrdinals`: Include ordinal UTXOs (default: false). WARNING: may destroy inscriptions!
+- `sbtc_deposit_status` - Check the status of an sBTC deposit from Emily API
+  - `txid`: Bitcoin transaction ID
+  - `vout`: Output index (default: 0)
+- `sbtc_get_deposit_info` - Get BTC deposit address and instructions for sBTC (returns real deposit addresses when wallet is unlocked)
 - `sbtc_get_peg_info` - Get sBTC peg ratio and supply
 
 **SIP-010 Token Tools:**
@@ -721,7 +748,7 @@ Signing keys are stored encrypted in `~/.aibtc/signing-keys/`:
 
 **Bitcoin-First Principle**: When users ask about "their wallet" or "their balance" without specifying a chain, default to Bitcoin (L1). Only use Stacks L2 operations when users explicitly mention STX, Stacks, or L2-specific features (smart contracts, DeFi, tokens, NFTs).
 
-**Ordinal Safety Principle**: The `transfer_btc` tool automatically protects users from accidentally destroying valuable inscriptions by using only cardinal UTXOs (safe to spend - no inscriptions) by default. Users must explicitly set `includeOrdinals=true` to override this safety. Never suggest using `includeOrdinals=true` unless the user explicitly wants to spend ordinal UTXOs.
+**Ordinal Safety Principle**: The `transfer_btc` and `sbtc_deposit` tools automatically protect users from accidentally destroying valuable inscriptions by using only cardinal UTXOs (safe to spend - no inscriptions) by default. Users must explicitly set `includeOrdinals=true` to override this safety. Never suggest using `includeOrdinals=true` unless the user explicitly wants to spend ordinal UTXOs.
 
 When a user asks for something:
 
@@ -738,7 +765,7 @@ When a user asks for something:
 Bitcoin inscriptions (ordinals) are valuable digital artifacts stored in transaction witness data. Accidentally spending a UTXO containing an inscription destroys the inscription forever.
 
 **Default Protection:**
-- `transfer_btc` uses cardinal UTXOs (no inscriptions) by default on mainnet
+- `transfer_btc` and `sbtc_deposit` use cardinal UTXOs (no inscriptions) by default on mainnet
 - On testnet, uses all UTXOs (Hiro Ordinals API is mainnet-only)
 - If no cardinal UTXOs available, transaction fails with helpful error message
 
@@ -771,6 +798,9 @@ Bitcoin inscriptions (ordinals) are valuable digital artifacts stored in transac
 | "Send 2 STX with high fee" | `transfer_stx` with amount "2000000", fee="high" |
 | "Transfer 100 USDCx with low fee" | `transfer_token` with token="USDCx", fee="low" |
 | "Send 0.001 sBTC quickly" | `sbtc_transfer` with amount "100000", fee="high" |
+| "Deposit 0.001 BTC to get sBTC" | `sbtc_deposit` with amount=100000 |
+| "Check my deposit status" | `sbtc_deposit_status` with txid |
+| "How do I get sBTC?" | `sbtc_get_deposit_info` |
 | "Transfer NFT #5 with medium fee" | `transfer_nft` with tokenId=5, fee="medium" |
 | "What pools can I trade on ALEX?" | `alex_list_pools` to discover available pairs |
 | "Swap 0.1 STX for ALEX" | `alex_swap` with tokenX="STX", tokenY="ALEX" |
