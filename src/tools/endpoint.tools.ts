@@ -10,12 +10,14 @@ import {
 } from "../endpoints/registry.js";
 import { createJsonResponse, createErrorResponse } from "../utils/index.js";
 
+const ALL_SOURCES = "x402.biwas.xyz, x402.aibtc.com, stx402.com, aibtc.com";
+
 export function registerEndpointTools(server: McpServer): void {
   // List x402 endpoints
   server.registerTool(
     "list_x402_endpoints",
     {
-      description: `List known x402 API endpoints from x402.biwas.xyz and stx402.com.
+      description: `List known x402 API endpoints from ${ALL_SOURCES}.
 
 The agent can:
 1. Execute x402 endpoints from these sources (paid API calls with automatic payment handling)
@@ -23,10 +25,12 @@ The agent can:
 
 Sources:
 - x402.biwas.xyz: DeFi analytics, market data, wallet analysis, Zest/ALEX protocols
-- stx402.com: AI services, cryptography, storage, utilities, agent registry`,
+- x402.aibtc.com: AI inference, OpenRouter integration, Stacks utilities, hashing, storage
+- stx402.com: AI services, cryptography, storage, utilities, agent registry
+- aibtc.com: Inbox messaging system`,
       inputSchema: {
         source: z
-          .enum(["x402.biwas.xyz", "stx402.com", "all"])
+          .enum(["x402.biwas.xyz", "x402.aibtc.com", "stx402.com", "aibtc.com", "all"])
           .optional()
           .default("all")
           .describe("Filter by API source"),
@@ -83,7 +87,7 @@ Sources:
 
 Available categories: ${categories.join(", ")}
 
-Sources: x402.biwas.xyz, stx402.com
+Sources: ${ALL_SOURCES}
 
 If you're looking to perform a direct blockchain action (transfer STX, call a contract), those are available via separate tools.`,
               },
@@ -94,7 +98,7 @@ If you're looking to perform a direct blockchain action (transfer STX, call a co
         const formatted = formatEndpointsTable(endpoints);
         const sourceInfo =
           source === "all"
-            ? "Sources: x402.biwas.xyz, stx402.com"
+            ? `Sources: ${ALL_SOURCES}`
             : `Source: ${source}`;
         return {
           content: [
@@ -118,7 +122,10 @@ If you're looking to perform a direct blockchain action (transfer STX, call a co
 
 Supported sources:
 - x402.biwas.xyz (default): Use path like "/api/pools/trending"
+- x402.aibtc.com: Use apiUrl="https://x402.aibtc.com" with path like "/inference/openrouter/chat"
 - stx402.com: Use apiUrl="https://stx402.com" with path like "/api/ai/dad-joke"
+- aibtc.com: Use apiUrl="https://aibtc.com" with path like "/api/inbox/{address}"
+- Any x402-compatible URL: Use url parameter with full endpoint URL
 
 Use list_x402_endpoints to discover available endpoints.`,
       inputSchema: {
@@ -126,11 +133,20 @@ Use list_x402_endpoints to discover available endpoints.`,
           .enum(["GET", "POST", "PUT", "DELETE"])
           .default("GET")
           .describe("HTTP method"),
-        path: z.string().describe("API endpoint path (e.g., '/api/pools/trending')"),
-        apiUrl: z
-          .enum(["https://x402.biwas.xyz", "https://stx402.com"])
+        url: z
+          .string()
+          .url()
           .optional()
-          .describe("API base URL. Defaults to configured API_URL (x402.biwas.xyz)."),
+          .describe("Full endpoint URL (e.g., 'https://stx402.com/api/ai/dad-joke'). Takes precedence over path+apiUrl."),
+        path: z
+          .string()
+          .optional()
+          .describe("API endpoint path (e.g., '/api/pools/trending'). Required if url is not provided."),
+        apiUrl: z
+          .string()
+          .url()
+          .optional()
+          .describe("API base URL. Known sources: x402.biwas.xyz, x402.aibtc.com, stx402.com, aibtc.com. Defaults to configured API_URL."),
         params: z
           .record(z.string(), z.string())
           .optional()
@@ -141,23 +157,44 @@ Use list_x402_endpoints to discover available endpoints.`,
           .describe("Request body for POST/PUT requests"),
       },
     },
-    async ({ method, path, apiUrl, params, data }) => {
-      try {
-        const baseUrl = apiUrl || API_URL;
-        const api = await createApiClient(baseUrl);
+    async ({ method, url, path, apiUrl, params, data }) => {
+      let baseUrl = "";
+      let requestPath = "";
 
-        const response = await api.request({
-          method,
-          url: path,
-          params,
-          data,
-        });
+      try {
+        if (url) {
+          const parsed = new URL(url);
+          if (parsed.protocol !== "https:") {
+            throw new Error("Only HTTPS URLs are allowed for x402 endpoints");
+          }
+          baseUrl = `${parsed.protocol}//${parsed.host}`;
+          requestPath = parsed.pathname;
+          // Merge URL query params into params to avoid duplication
+          if (parsed.search) {
+            const urlParams = Object.fromEntries(parsed.searchParams);
+            params = { ...urlParams, ...params };
+          }
+        } else if (path) {
+          baseUrl = apiUrl || API_URL;
+          requestPath = path;
+        } else {
+          throw new Error("Either 'url' or 'path' parameter must be provided");
+        }
+
+        if (apiUrl && !apiUrl.startsWith("https://")) {
+          throw new Error("Only HTTPS URLs are allowed for x402 endpoints");
+        }
+
+        const api = await createApiClient(baseUrl);
+        const response = await api.request({ method, url: requestPath, params, data });
+        const endpoint = `${baseUrl}${requestPath}`;
 
         return createJsonResponse({
-          endpoint: `${method} ${baseUrl}${path}`,
+          endpoint: `${method} ${endpoint}`,
           response: response.data,
         });
       } catch (error) {
+        const endpoint = baseUrl ? `${baseUrl}${requestPath}` : (url || path || "unknown");
         let message = "Unknown error";
         if (error instanceof Error) {
           message = error.message;
@@ -165,7 +202,7 @@ Use list_x402_endpoints to discover available endpoints.`,
         const axiosError = error as { response?: { status?: number; data?: unknown } };
         if (axiosError.response) {
           if (axiosError.response.status === 404) {
-            message = `Endpoint not found: ${path}. Use list_x402_endpoints to see available endpoints.`;
+            message = `Endpoint not found: ${endpoint}. Use list_x402_endpoints to see available endpoints.`;
           } else {
             message = `HTTP ${axiosError.response.status}: ${JSON.stringify(axiosError.response.data)}`;
           }

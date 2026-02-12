@@ -1,7 +1,9 @@
 /**
  * Known x402 endpoints registry
- * Endpoints from x402.biwas.xyz, x402.aibtc.com, and stx402.com
+ * Endpoints from x402.biwas.xyz, x402.aibtc.com, stx402.com, and aibtc.com
  */
+
+export type X402Source = "x402.biwas.xyz" | "x402.aibtc.com" | "stx402.com" | "aibtc.com";
 
 export interface X402Endpoint {
   path: string;
@@ -9,7 +11,7 @@ export interface X402Endpoint {
   description: string;
   cost: string;
   category: string;
-  source: "x402.biwas.xyz" | "x402.aibtc.com" | "stx402.com";
+  source: X402Source;
   params?: Record<string, string>;
   body?: Record<string, string>;
 }
@@ -494,6 +496,44 @@ const STX402_FREE_ENDPOINTS: X402Endpoint[] = [
     cost: "FREE",
     category: "Agent Registry",
     source: "stx402.com",
+  },
+];
+
+// =============================================================================
+// aibtc.com ENDPOINTS (Inbox Messaging)
+// =============================================================================
+
+const AIBTC_INBOX_FREE_ENDPOINTS: X402Endpoint[] = [
+  {
+    path: "/api/inbox/{address}",
+    method: "GET",
+    description: "Retrieve messages for an address",
+    cost: "FREE",
+    category: "Inbox",
+    source: "aibtc.com",
+    params: { address: "Stacks address" },
+  },
+  {
+    path: "/api/inbox/{address}/{messageId}",
+    method: "DELETE",
+    description: "Delete a message by ID",
+    cost: "FREE",
+    category: "Inbox",
+    source: "aibtc.com",
+    params: { address: "Stacks address", messageId: "Message ID" },
+  },
+];
+
+const AIBTC_INBOX_PAID_ENDPOINTS: X402Endpoint[] = [
+  {
+    path: "/api/inbox/{address}",
+    method: "POST",
+    description: "Send a message to an address",
+    cost: "0.000001 sBTC",
+    category: "Inbox",
+    source: "aibtc.com",
+    params: { address: "Recipient Stacks address" },
+    body: { from: "Sender address or identifier", message: "Message content" },
   },
 ];
 
@@ -1108,8 +1148,18 @@ const STX402_PAID_ENDPOINTS: X402Endpoint[] = [
 // EXPORTS
 // =============================================================================
 
-export const PAID_ENDPOINTS = [...BIWAS_PAID_ENDPOINTS, ...AIBTC_PAID_ENDPOINTS, ...STX402_PAID_ENDPOINTS];
-export const FREE_ENDPOINTS = [...BIWAS_FREE_ENDPOINTS, ...AIBTC_FREE_ENDPOINTS, ...STX402_FREE_ENDPOINTS];
+export const PAID_ENDPOINTS = [
+  ...BIWAS_PAID_ENDPOINTS,
+  ...AIBTC_PAID_ENDPOINTS,
+  ...AIBTC_INBOX_PAID_ENDPOINTS,
+  ...STX402_PAID_ENDPOINTS,
+];
+export const FREE_ENDPOINTS = [
+  ...BIWAS_FREE_ENDPOINTS,
+  ...AIBTC_FREE_ENDPOINTS,
+  ...AIBTC_INBOX_FREE_ENDPOINTS,
+  ...STX402_FREE_ENDPOINTS,
+];
 export const ALL_ENDPOINTS = [...PAID_ENDPOINTS, ...FREE_ENDPOINTS];
 
 /**
@@ -1137,7 +1187,7 @@ export function getEndpointsByCategory(category: string): X402Endpoint[] {
 /**
  * Get endpoints by source
  */
-export function getEndpointsBySource(source: "x402.biwas.xyz" | "x402.aibtc.com" | "stx402.com"): X402Endpoint[] {
+export function getEndpointsBySource(source: X402Source): X402Endpoint[] {
   return ALL_ENDPOINTS.filter((endpoint) => endpoint.source === source);
 }
 
