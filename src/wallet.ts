@@ -19,6 +19,7 @@ import {
   someCV,
 } from "@stacks/transactions";
 import { StacksNetworkName } from "@stacks/network";
+import { hexToBytes } from "@stacks/common";
 
 /**
  * @deprecated This module is superseded by modular replacements.
@@ -170,7 +171,7 @@ export async function transferStx(
 
   return {
     txid: broadcastResponse.txid,
-    rawTx: Buffer.from(transaction.serialize()).toString("hex"),
+    rawTx: transaction.serialize(),
   };
 }
 
@@ -207,7 +208,7 @@ export async function callContract(
 
   return {
     txid: broadcastResponse.txid,
-    rawTx: Buffer.from(transaction.serialize()).toString("hex"),
+    rawTx: transaction.serialize(),
   };
 }
 
@@ -241,7 +242,7 @@ export async function deployContract(
 
   return {
     txid: broadcastResponse.txid,
-    rawTx: Buffer.from(transaction.serialize()).toString("hex"),
+    rawTx: transaction.serialize(),
   };
 }
 
@@ -266,7 +267,7 @@ export async function signStxTransfer(
   });
 
   return {
-    signedTx: Buffer.from(transaction.serialize()).toString("hex"),
+    signedTx: transaction.serialize(),
     txid: transaction.txid(),
   };
 }
@@ -292,7 +293,7 @@ export async function signContractCall(
   });
 
   return {
-    signedTx: Buffer.from(transaction.serialize()).toString("hex"),
+    signedTx: transaction.serialize(),
     txid: transaction.txid(),
   };
 }
@@ -306,14 +307,14 @@ export async function broadcastSignedTransaction(
   network: Network
 ): Promise<{ txid: string }> {
   const baseUrl = getApiBaseUrl(network);
-  const txBuffer = Buffer.from(signedTx, "hex");
+  const txBytes = Buffer.from(hexToBytes(signedTx));
 
   const response = await fetch(`${baseUrl}/v2/transactions`, {
     method: "POST",
     headers: {
       "Content-Type": "application/octet-stream",
     },
-    body: txBuffer,
+    body: txBytes,
   });
 
   if (!response.ok) {
