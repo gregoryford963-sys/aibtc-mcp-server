@@ -19,6 +19,7 @@ import {
 import { HiroApiService, getHiroApi } from "./hiro-api.js";
 import { getErc8004Contracts, parseContractId, type Network } from "../config/index.js";
 import { callContract, type Account, type TransferResult } from "../transactions/builder.js";
+import { sponsoredContractCall } from "../transactions/sponsor-builder.js";
 
 // ============================================================================
 // Types
@@ -87,7 +88,8 @@ export class Erc8004Service {
     account: Account,
     uri?: string,
     metadata?: Array<{ key: string; value: Buffer }>,
-    fee?: bigint
+    fee?: bigint,
+    sponsored?: boolean
   ): Promise<TransferResult> {
     const { address, name } = parseContractId(this.contracts.identityRegistry);
 
@@ -118,13 +120,19 @@ export class Erc8004Service {
       functionArgs = [];
     }
 
-    return callContract(account, {
+    const contractCallOptions = {
       contractAddress: address,
       contractName: name,
       functionName,
       functionArgs,
       fee,
-    });
+    };
+
+    if (sponsored) {
+      return sponsoredContractCall(account, contractCallOptions, this.network);
+    }
+
+    return callContract(account, contractCallOptions);
   }
 
   /**
@@ -199,17 +207,24 @@ export class Erc8004Service {
     account: Account,
     agentId: number,
     newUri: string,
-    fee?: bigint
+    fee?: bigint,
+    sponsored?: boolean
   ): Promise<TransferResult> {
     const { address, name } = parseContractId(this.contracts.identityRegistry);
 
-    return callContract(account, {
+    const contractCallOptions = {
       contractAddress: address,
       contractName: name,
       functionName: "set-agent-uri",
       functionArgs: [uintCV(agentId), stringUtf8CV(newUri)],
       fee,
-    });
+    };
+
+    if (sponsored) {
+      return sponsoredContractCall(account, contractCallOptions, this.network);
+    }
+
+    return callContract(account, contractCallOptions);
   }
 
   // ==========================================================================
@@ -229,26 +244,35 @@ export class Erc8004Service {
     endpoint?: string,
     feedbackUri?: string,
     feedbackHash?: Buffer,
-    fee?: bigint
+    fee?: bigint,
+    sponsored?: boolean
   ): Promise<TransferResult> {
     const { address, name } = parseContractId(this.contracts.reputationRegistry);
 
-    return callContract(account, {
+    const functionArgs = [
+      uintCV(agentId),
+      uintCV(value),
+      uintCV(valueDecimals),
+      stringUtf8CV(tag1 || ""),
+      stringUtf8CV(tag2 || ""),
+      stringUtf8CV(endpoint || ""),
+      stringUtf8CV(feedbackUri || ""),
+      bufferCV(feedbackHash || Buffer.alloc(32)),
+    ];
+
+    const contractCallOptions = {
       contractAddress: address,
       contractName: name,
       functionName: "give-feedback",
-      functionArgs: [
-        uintCV(agentId),
-        uintCV(value),
-        uintCV(valueDecimals),
-        stringUtf8CV(tag1 || ""),
-        stringUtf8CV(tag2 || ""),
-        stringUtf8CV(endpoint || ""),
-        stringUtf8CV(feedbackUri || ""),
-        bufferCV(feedbackHash || Buffer.alloc(32)),
-      ],
+      functionArgs,
       fee,
-    });
+    };
+
+    if (sponsored) {
+      return sponsoredContractCall(account, contractCallOptions, this.network);
+    }
+
+    return callContract(account, contractCallOptions);
   }
 
   /**
@@ -356,22 +380,31 @@ export class Erc8004Service {
     agentId: number,
     requestUri: string,
     requestHash: Buffer,
-    fee?: bigint
+    fee?: bigint,
+    sponsored?: boolean
   ): Promise<TransferResult> {
     const { address, name } = parseContractId(this.contracts.validationRegistry);
 
-    return callContract(account, {
+    const functionArgs = [
+      principalCV(validator),
+      uintCV(agentId),
+      stringUtf8CV(requestUri),
+      bufferCV(requestHash),
+    ];
+
+    const contractCallOptions = {
       contractAddress: address,
       contractName: name,
       functionName: "validation-request",
-      functionArgs: [
-        principalCV(validator),
-        uintCV(agentId),
-        stringUtf8CV(requestUri),
-        bufferCV(requestHash),
-      ],
+      functionArgs,
       fee,
-    });
+    };
+
+    if (sponsored) {
+      return sponsoredContractCall(account, contractCallOptions, this.network);
+    }
+
+    return callContract(account, contractCallOptions);
   }
 
   /**

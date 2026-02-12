@@ -7,6 +7,7 @@ import { getExplorerTxUrl } from "../config/networks.js";
 import { createJsonResponse, createErrorResponse, resolveFee } from "../utils/index.js";
 import { getWalletManager } from "../services/wallet-manager.js";
 import { MempoolApi, getMempoolTxUrl } from "../services/mempool-api.js";
+import { sponsoredSchema } from "./schemas.js";
 
 export function registerSbtcTools(server: McpServer): void {
   // Get sBTC balance
@@ -57,14 +58,15 @@ Example: To send 0.001 sBTC, use amount "100000" (satoshis).`,
           .string()
           .optional()
           .describe("Optional fee: 'low' | 'medium' | 'high' preset or micro-STX amount. If omitted, auto-estimated."),
+        sponsored: sponsoredSchema,
       },
     },
-    async ({ recipient, amount, memo, fee }) => {
+    async ({ recipient, amount, memo, fee, sponsored }) => {
       try {
         const sbtcService = getSbtcService(NETWORK);
         const account = await getAccount();
         const resolvedFee = await resolveFee(fee, NETWORK, "contract_call");
-        const result = await sbtcService.transfer(account, recipient, BigInt(amount), memo, resolvedFee);
+        const result = await sbtcService.transfer(account, recipient, BigInt(amount), memo, resolvedFee, sponsored);
 
         const btcAmount = (BigInt(amount) / BigInt(100_000_000)).toString();
 

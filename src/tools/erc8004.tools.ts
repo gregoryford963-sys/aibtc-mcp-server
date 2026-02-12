@@ -24,6 +24,7 @@ import { createJsonResponse, createErrorResponse } from "../utils/index.js";
 import { getWalletManager } from "../services/wallet-manager.js";
 import { Erc8004Service } from "../services/erc8004.service.js";
 import { resolveFee } from "../utils/fee.js";
+import { sponsoredSchema } from "./schemas.js";
 
 const MAX_METADATA_KEY_LENGTH = 128;
 const MAX_METADATA_VALUE_BYTES = 512;
@@ -90,9 +91,10 @@ export function registerErc8004Tools(server: McpServer): void {
           .string()
           .optional()
           .describe('Fee preset ("low", "medium", "high") or micro-STX amount. Optional.'),
+        sponsored: sponsoredSchema,
       },
     },
-    async ({ uri, metadata, fee }) => {
+    async ({ uri, metadata, fee, sponsored }) => {
       try {
         const walletManager = getWalletManager();
         const account = walletManager.getActiveAccount();
@@ -114,7 +116,7 @@ export function registerErc8004Tools(server: McpServer): void {
         }
 
         const feeAmount = fee ? await resolveFee(fee, NETWORK, "contract_call") : undefined;
-        const result = await service.registerIdentity(account, uri, parsedMetadata, feeAmount);
+        const result = await service.registerIdentity(account, uri, parsedMetadata, feeAmount, sponsored);
 
         return createJsonResponse({
           success: true,
@@ -206,9 +208,10 @@ export function registerErc8004Tools(server: McpServer): void {
           .string()
           .optional()
           .describe('Fee preset ("low", "medium", "high") or micro-STX amount. Optional.'),
+        sponsored: sponsoredSchema,
       },
     },
-    async ({ agentId, value, decimals, tag1, tag2, endpoint, feedbackUri, feedbackHash, fee }) => {
+    async ({ agentId, value, decimals, tag1, tag2, endpoint, feedbackUri, feedbackHash, fee, sponsored }) => {
       try {
         const walletManager = getWalletManager();
         const account = walletManager.getActiveAccount();
@@ -231,7 +234,8 @@ export function registerErc8004Tools(server: McpServer): void {
           endpoint,
           feedbackUri,
           hashBuffer,
-          feeAmount
+          feeAmount,
+          sponsored
         );
 
         return createJsonResponse({
@@ -312,9 +316,10 @@ export function registerErc8004Tools(server: McpServer): void {
           .string()
           .optional()
           .describe('Fee preset ("low", "medium", "high") or micro-STX amount. Optional.'),
+        sponsored: sponsoredSchema,
       },
     },
-    async ({ validator, agentId, requestUri, requestHash, fee }) => {
+    async ({ validator, agentId, requestUri, requestHash, fee, sponsored }) => {
       try {
         const walletManager = getWalletManager();
         const account = walletManager.getActiveAccount();
@@ -332,7 +337,8 @@ export function registerErc8004Tools(server: McpServer): void {
           agentId,
           requestUri,
           hashBuffer,
-          feeAmount
+          feeAmount,
+          sponsored
         );
 
         return createJsonResponse({

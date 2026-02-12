@@ -2,6 +2,7 @@ import { ClarityValue, uintCV, principalCV } from "@stacks/transactions";
 import { HiroApiService, getHiroApi } from "./hiro-api.js";
 import { getContracts, parseContractId, type Network } from "../config/index.js";
 import { callContract, type Account, type TransferResult } from "../transactions/builder.js";
+import { sponsoredContractCall } from "../transactions/sponsor-builder.js";
 
 // ============================================================================
 // Types
@@ -67,7 +68,8 @@ export class SbtcService {
     recipient: string,
     amount: bigint,
     memo?: string,
-    fee?: bigint
+    fee?: bigint,
+    sponsored?: boolean
   ): Promise<TransferResult> {
     const sbtcContract = this.contracts.SBTC_TOKEN;
     const { address: contractAddress, name: contractName } = parseContractId(sbtcContract);
@@ -84,13 +86,19 @@ export class SbtcService {
       // Implementation depends on the specific sBTC contract version
     }
 
-    return callContract(account, {
+    const contractCallOptions = {
       contractAddress,
       contractName,
       functionName: "transfer",
       functionArgs,
       ...(fee !== undefined && { fee }),
-    });
+    };
+
+    if (sponsored) {
+      return sponsoredContractCall(account, contractCallOptions, this.network);
+    }
+
+    return callContract(account, contractCallOptions);
   }
 
   /**
