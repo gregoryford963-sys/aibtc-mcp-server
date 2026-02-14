@@ -6,6 +6,19 @@ import { parseContractId } from "../config/contracts.js";
 // Types
 // ============================================================================
 
+/**
+ * Custom error for Hiro API rate limit responses (429)
+ */
+export class HiroApiRateLimitError extends Error {
+  constructor(
+    message: string,
+    public readonly retryAfterSeconds: number
+  ) {
+    super(message);
+    this.name = "HiroApiRateLimitError";
+  }
+}
+
 export interface AccountInfo {
   balance: string;
   locked: string;
@@ -299,6 +312,7 @@ export interface TokenMetadata {
 export class HiroApiService {
   private baseUrl: string;
   private apiKey: string;
+  private mempoolFeesCache: { data: MempoolFeeResponse; expires: number } | null = null;
 
   constructor(private network: Network) {
     this.baseUrl = getApiBaseUrl(network);
@@ -318,6 +332,16 @@ export class HiroApiService {
     });
 
     if (!response.ok) {
+      if (response.status === 429) {
+        const retryAfter = response.headers.get("Retry-After");
+        const retryAfterSeconds =
+          retryAfter && !isNaN(parseInt(retryAfter, 10)) ? parseInt(retryAfter, 10) : 60;
+        throw new HiroApiRateLimitError(
+          `Hiro API rate limit exceeded. Retry after ${retryAfterSeconds}s`,
+          retryAfterSeconds
+        );
+      }
+
       const errorText = await response.text();
       throw new Error(`Hiro API error (${response.status}): ${errorText}`);
     }
@@ -557,9 +581,18 @@ export class HiroApiService {
    * Get fee priorities from the mempool.
    * Returns estimated fees (in micro-STX) for different priority levels
    * and transaction types.
+   *
+   * Cached for 60 seconds to reduce API load.
    */
   async getMempoolFees(): Promise<MempoolFeeResponse> {
-    return this.fetch<MempoolFeeResponse>("/extended/v2/mempool/fees");
+    const now = Date.now();
+    if (this.mempoolFeesCache && now < this.mempoolFeesCache.expires) {
+      return this.mempoolFeesCache.data;
+    }
+
+    const data = await this.fetch<MempoolFeeResponse>("/extended/v2/mempool/fees");
+    this.mempoolFeesCache = { data, expires: now + 60000 }; // 60s TTL
+    return data;
   }
 
   // ==========================================================================
