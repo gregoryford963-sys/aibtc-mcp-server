@@ -1148,13 +1148,13 @@ const STX402_PAID_ENDPOINTS: X402Endpoint[] = [
 // EXPORTS
 // =============================================================================
 
-export const PAID_ENDPOINTS = [
+const PAID_ENDPOINTS = [
   ...BIWAS_PAID_ENDPOINTS,
   ...AIBTC_PAID_ENDPOINTS,
   ...AIBTC_INBOX_PAID_ENDPOINTS,
   ...STX402_PAID_ENDPOINTS,
 ];
-export const FREE_ENDPOINTS = [
+const FREE_ENDPOINTS = [
   ...BIWAS_FREE_ENDPOINTS,
   ...AIBTC_FREE_ENDPOINTS,
   ...AIBTC_INBOX_FREE_ENDPOINTS,
@@ -1172,15 +1172,6 @@ export function searchEndpoints(query: string): X402Endpoint[] {
       endpoint.path.toLowerCase().includes(lowerQuery) ||
       endpoint.description.toLowerCase().includes(lowerQuery) ||
       endpoint.category.toLowerCase().includes(lowerQuery)
-  );
-}
-
-/**
- * Get endpoints by category
- */
-export function getEndpointsByCategory(category: string): X402Endpoint[] {
-  return ALL_ENDPOINTS.filter(
-    (endpoint) => endpoint.category.toLowerCase() === category.toLowerCase()
   );
 }
 
@@ -1231,6 +1222,10 @@ export function getCategories(): string[] {
   return Array.from(categories).sort();
 }
 
+function matchesDomain(host: string, domain: string): boolean {
+  return host === domain || host.endsWith(`.${domain}`);
+}
+
 function normalizeSource(url: string): X402Source | undefined {
   let hostname: string | undefined;
 
@@ -1244,10 +1239,6 @@ function normalizeSource(url: string): X402Source | undefined {
     }
   }
 
-  const matchesDomain = (host: string, domain: string): boolean => {
-    return host === domain || host.endsWith(`.${domain}`);
-  };
-
   if (matchesDomain(hostname, "x402.biwas.xyz")) return "x402.biwas.xyz";
   if (matchesDomain(hostname, "x402.aibtc.com")) return "x402.aibtc.com";
   if (matchesDomain(hostname, "stx402.com")) return "stx402.com";
@@ -1255,10 +1246,34 @@ function normalizeSource(url: string): X402Source | undefined {
   return undefined;
 }
 
+// Memoization cache for path pattern regexes
+const pathRegexCache = new Map<string, RegExp>();
+
+/**
+ * Convert a path pattern with placeholders to a regex.
+ * Example: "/api/inbox/{address}" → /^\/api\/inbox\/([^/]+)$/
+ */
+function pathToRegex(pattern: string): RegExp {
+  const cached = pathRegexCache.get(pattern);
+  if (cached) {
+    return cached;
+  }
+
+  // Split on {paramName} placeholders, escape literal segments, rejoin with capture groups
+  const parts = pattern.split(/\{[^}]+\}/);
+  const escaped = parts.map(p => p.replace(/[.*+?^$|()[\]{}\\]/g, '\\$&')).join('([^/]+)');
+  const regex = new RegExp(`^${escaped}$`);
+
+  pathRegexCache.set(pattern, regex);
+  return regex;
+}
+
 /**
  * Lookup an endpoint in the registry by method, path, and source URL.
  * Used to determine if an endpoint is known-FREE or known-PAID before
  * deciding whether to use a payment-capable client.
+ *
+ * Supports path patterns with placeholders like {address}, {messageId}, etc.
  */
 export function lookupEndpoint(
   method: string,
@@ -1274,10 +1289,34 @@ export function lookupEndpoint(
   const normalizedPath = pathWithoutQuery.startsWith("/") ? pathWithoutQuery : `/${pathWithoutQuery}`;
   const normalizedMethod = method.toUpperCase() as "GET" | "POST" | "PUT" | "DELETE";
 
-  return ALL_ENDPOINTS.find(
+  // Fast path: try exact match first
+  const exactMatch = ALL_ENDPOINTS.find(
     (ep) =>
       ep.method === normalizedMethod &&
       ep.path === normalizedPath &&
       ep.source === source
   );
+
+  if (exactMatch) {
+    return exactMatch;
+  }
+
+  // Slow path: try pattern matching for endpoints with placeholders
+  for (const ep of ALL_ENDPOINTS) {
+    if (ep.method !== normalizedMethod || ep.source !== source) {
+      continue;
+    }
+
+    // Skip if pattern has no placeholders (already tried exact match)
+    if (!ep.path.includes('{')) {
+      continue;
+    }
+
+    const regex = pathToRegex(ep.path);
+    if (regex.test(normalizedPath)) {
+      return ep;
+    }
+  }
+
+  return undefined;
 }
