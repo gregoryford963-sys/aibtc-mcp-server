@@ -1230,3 +1230,54 @@ export function getCategories(): string[] {
   const categories = new Set(ALL_ENDPOINTS.map((ep) => ep.category));
   return Array.from(categories).sort();
 }
+
+function normalizeSource(url: string): X402Source | undefined {
+  let hostname: string | undefined;
+
+  try {
+    hostname = new URL(url).hostname.toLowerCase();
+  } catch {
+    try {
+      hostname = new URL(`https://${url}`).hostname.toLowerCase();
+    } catch {
+      return undefined;
+    }
+  }
+
+  const matchesDomain = (host: string, domain: string): boolean => {
+    return host === domain || host.endsWith(`.${domain}`);
+  };
+
+  if (matchesDomain(hostname, "x402.biwas.xyz")) return "x402.biwas.xyz";
+  if (matchesDomain(hostname, "x402.aibtc.com")) return "x402.aibtc.com";
+  if (matchesDomain(hostname, "stx402.com")) return "stx402.com";
+  if (matchesDomain(hostname, "aibtc.com")) return "aibtc.com";
+  return undefined;
+}
+
+/**
+ * Lookup an endpoint in the registry by method, path, and source URL.
+ * Used to determine if an endpoint is known-FREE or known-PAID before
+ * deciding whether to use a payment-capable client.
+ */
+export function lookupEndpoint(
+  method: string,
+  path: string,
+  sourceUrl: string
+): X402Endpoint | undefined {
+  const source = normalizeSource(sourceUrl);
+  if (!source) {
+    return undefined;
+  }
+
+  const pathWithoutQuery = path.split("?")[0];
+  const normalizedPath = pathWithoutQuery.startsWith("/") ? pathWithoutQuery : `/${pathWithoutQuery}`;
+  const normalizedMethod = method.toUpperCase() as "GET" | "POST" | "PUT" | "DELETE";
+
+  return ALL_ENDPOINTS.find(
+    (ep) =>
+      ep.method === normalizedMethod &&
+      ep.path === normalizedPath &&
+      ep.source === source
+  );
+}

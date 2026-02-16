@@ -103,6 +103,14 @@ export async function createApiClient(baseUrl?: string): Promise<AxiosInstance> 
 }
 
 /**
+ * Create a plain axios client without payment interceptor.
+ * Used for known-free endpoints where 402 responses should fail, not auto-pay.
+ */
+export function createPlainClient(baseUrl?: string): AxiosInstance {
+  return createBaseAxiosInstance(baseUrl);
+}
+
+/**
  * Get wallet address - checks managed wallet first, then env mnemonic
  */
 export async function getWalletAddress(): Promise<string> {

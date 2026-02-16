@@ -318,7 +318,11 @@ export class HiroApiService {
     this.defaultBaseUrl = getApiBaseUrl(network);
   }
 
-  private async fetch<T>(path: string, options?: RequestInit): Promise<T> {
+  /**
+   * Helper function to attempt a single fetch request.
+   * Extracted to enable retry logic in the main fetch() method.
+   */
+  private async attemptFetch<T>(path: string, options?: RequestInit): Promise<T> {
     const apiKey = (await getHiroApiKey()) || process.env.HIRO_API_KEY || "";
     const baseUrl = (await getStacksApiUrl()) || this.defaultBaseUrl;
     const url = `${baseUrl}${path}`;
@@ -334,9 +338,8 @@ export class HiroApiService {
 
     if (!response.ok) {
       if (response.status === 429) {
-        const retryAfter = response.headers.get("Retry-After");
-        const retryAfterSeconds =
-          retryAfter && !isNaN(parseInt(retryAfter, 10)) ? parseInt(retryAfter, 10) : 60;
+        const parsed = parseInt(response.headers.get("Retry-After") ?? "", 10);
+        const retryAfterSeconds = isNaN(parsed) ? 60 : parsed;
         throw new HiroApiRateLimitError(
           `Hiro API rate limit exceeded. Retry after ${retryAfterSeconds}s`,
           retryAfterSeconds
@@ -348,6 +351,32 @@ export class HiroApiService {
     }
 
     return response.json();
+  }
+
+  /**
+   * Fetch data from the Hiro API with automatic retry on rate limits.
+   * Retries up to 3 times with exponential backoff (1s, 2s, 4s).
+   * Respects Retry-After header if present.
+   */
+  private async fetch<T>(path: string, options?: RequestInit): Promise<T> {
+    const backoffDelays = [1000, 2000, 4000];
+    const maxAttempts = backoffDelays.length + 1;
+
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      try {
+        return await this.attemptFetch<T>(path, options);
+      } catch (error) {
+        if (!(error instanceof HiroApiRateLimitError) || attempt === maxAttempts - 1) {
+          throw error;
+        }
+
+        const retryAfterMs = error.retryAfterSeconds * 1000;
+        const delay = Math.max(retryAfterMs, backoffDelays[attempt]);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+    }
+
+    throw new Error("Unreachable: loop always returns or throws");
   }
 
   // ==========================================================================

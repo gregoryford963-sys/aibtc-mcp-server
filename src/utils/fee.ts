@@ -10,6 +10,17 @@ import { getHiroApi, type MempoolFeePriorities } from "../services/hiro-api.js";
 import type { Network } from "../config/networks.js";
 
 /**
+ * Fee floor and ceiling clamps by transaction type (in micro-STX).
+ * Prevents absurd fees during mempool spikes while allowing reasonable variation.
+ */
+const FEE_CLAMPS = {
+  token_transfer: { floor: 180n, ceiling: 3000n },
+  contract_call: { floor: 3000n, ceiling: 100000n },
+  smart_contract: { floor: 10000n, ceiling: 100000n },
+  all: { floor: 180n, ceiling: 100000n }, // Widest range for aggregate fees
+} as const;
+
+/**
  * Valid fee preset strings.
  * These map to the mempool fee priorities:
  * - "low" -> low_priority
@@ -39,6 +50,15 @@ function presetToPriorityKey(preset: FeePreset): keyof MempoolFeePriorities {
 }
 
 /**
+ * Clamp a fee value between floor and ceiling.
+ */
+function clampFee(value: bigint, floor: bigint, ceiling: bigint): bigint {
+  if (value < floor) return floor;
+  if (value > ceiling) return ceiling;
+  return value;
+}
+
+/**
  * Resolve a fee string to a bigint value in micro-STX.
  *
  * @param fee - Either a numeric string (micro-STX) or preset ("low" | "medium" | "high")
@@ -62,26 +82,37 @@ export async function resolveFee(
   network: Network,
   txType: "all" | "token_transfer" | "contract_call" | "smart_contract" = "all"
 ): Promise<bigint | undefined> {
-  // If no fee specified, return undefined to use auto-estimation
   if (!fee) {
     return undefined;
   }
 
-  // Check if it's a preset string
   if (isFeePreset(fee)) {
     const hiroApi = getHiroApi(network);
-    const mempoolFees = await hiroApi.getMempoolFees();
 
-    // Get the appropriate fee tier based on transaction type
-    const feeTier = mempoolFees[txType];
-    const priorityKey = presetToPriorityKey(fee);
-    const feeValue = feeTier[priorityKey];
+    try {
+      const mempoolFees = await hiroApi.getMempoolFees();
+      const feeTier = mempoolFees[txType];
+      const priorityKey = presetToPriorityKey(fee);
+      const rawFee = BigInt(Math.ceil(feeTier[priorityKey]));
+      const clamps = FEE_CLAMPS[txType];
+      return clampFee(rawFee, clamps.floor, clamps.ceiling);
+    } catch (error) {
+      console.error(
+        `Failed to fetch mempool fees (using fallback): ${error instanceof Error ? error.message : String(error)}`
+      );
 
-    // Return as bigint (values are already in micro-STX)
-    return BigInt(Math.ceil(feeValue));
+      const clamps = FEE_CLAMPS[txType];
+      const multipliers: Record<FeePreset, bigint> = { low: 1n, medium: 2n, high: 3n };
+      const fallbackFee = clamps.floor * multipliers[fee.toLowerCase() as FeePreset];
+
+      console.info(
+        `Using fallback fee: ${fallbackFee} uSTX (${fee} preset, ${txType} type)`
+      );
+
+      return fallbackFee;
+    }
   }
 
-  // Otherwise, treat as numeric string - validate format first
   const normalizedFee = fee.trim();
   if (!/^\d+$/.test(normalizedFee)) {
     throw new Error(
