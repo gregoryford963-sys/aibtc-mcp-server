@@ -1,6 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { createApiClient, createPlainClient, API_URL, probeEndpoint, formatPaymentAmount, type ProbeResult, checkSufficientBalance, generateDedupKey, checkDedupCache, recordTransaction, getAccount } from "../services/x402.service.js";
+import { createApiClient, createPlainClient, API_URL, probeEndpoint, formatPaymentAmount, type ProbeResult, checkSufficientBalance, generateDedupKey, checkDedupCache, recordTransaction, getAccount, extractTxidFromPaymentSignature, pollTransactionConfirmation, NETWORK } from "../services/x402.service.js";
 import {
   ALL_ENDPOINTS,
   searchEndpoints,
@@ -9,6 +9,7 @@ import {
   getCategories,
 } from "../endpoints/registry.js";
 import { createJsonResponse, createErrorResponse } from "../utils/index.js";
+import { getExplorerTxUrl } from "../config/networks.js";
 
 const ALL_SOURCES = "x402.biwas.xyz, x402.aibtc.com, stx402.com, aibtc.com";
 
@@ -338,17 +339,29 @@ Use list_x402_endpoints to discover available endpoints.`,
           const api = await createApiClient(baseUrl);
           const response = await api.request({ method, url: requestPath, params, data });
 
-          // Extract txid from response and record for dedup
-          // x402 payment responses typically include txid in response data or headers
-          const txid = (response.data as { txid?: string })?.txid ||
-                       response.headers?.['x-transaction-id'] ||
-                       'unknown';
-          recordTransaction(dedupKey, txid);
+          // Extract txid from response data, headers, or payment-response header
+          let txid = (response.data as { txid?: string })?.txid ||
+                     response.headers?.['x-transaction-id'];
+
+          if (!txid) {
+            const paymentResponseHeader = response.headers?.['payment-response'];
+            if (paymentResponseHeader) {
+              try {
+                const decoded = JSON.parse(Buffer.from(paymentResponseHeader, 'base64').toString('utf-8'));
+                txid = decoded.transaction || decoded.txid;
+              } catch {
+                // ignore parse errors
+              }
+            }
+          }
+
+          const resolvedTxid = txid || 'unknown';
+          recordTransaction(dedupKey, resolvedTxid);
 
           return createJsonResponse({
             endpoint: `${method} ${fullUrl}`,
             response: response.data,
-            ...(txid !== 'unknown' && { txid }),
+            ...(resolvedTxid !== 'unknown' && { txid: resolvedTxid }),
           });
         }
 
@@ -361,6 +374,61 @@ Use list_x402_endpoints to discover available endpoints.`,
           response: response.data,
         });
       } catch (error) {
+        // Check if a payment was attempted — look for payment-signature on the failed request config
+        const axiosError = error as {
+          config?: { headers?: Record<string, string> };
+          response?: { status?: number; data?: unknown };
+          message?: string;
+        };
+
+        const paymentSig = axiosError.config?.headers?.['payment-signature'];
+
+        if (paymentSig) {
+          // Payment was attempted — extract txid for recovery
+          const txid = extractTxidFromPaymentSignature(paymentSig);
+
+          if (txid) {
+            // Record in dedup cache to prevent double-payment on retry
+            const dedupKey = generateDedupKey(method, fullUrl, params, data);
+            recordTransaction(dedupKey, txid);
+
+            // Brief poll to check if already confirmed (30s max)
+            const confirmation = await pollTransactionConfirmation(txid);
+            const explorerUrl = getExplorerTxUrl(txid, NETWORK);
+
+            if (confirmation.confirmed) {
+              return createJsonResponse({
+                endpoint: `${method} ${fullUrl}`,
+                message: 'Payment confirmed on-chain but the API server did not return content. ' +
+                  'The transaction settled successfully. If this was an inbox message, ' +
+                  'you can resubmit with the txid as proof of payment.',
+                txid,
+                explorerUrl,
+                confirmation: {
+                  status: confirmation.status,
+                  blockHeight: confirmation.blockHeight,
+                },
+              });
+            }
+
+            // Not confirmed yet — return txid for manual recovery
+            return createJsonResponse({
+              endpoint: `${method} ${fullUrl}`,
+              message: 'Payment transaction was broadcast but settlement timed out. ' +
+                'The transaction may still confirm. Check the explorer link for status. ' +
+                'Do NOT retry — this would send a duplicate payment.',
+              txid,
+              explorerUrl,
+              confirmation: {
+                status: confirmation.status,
+                confirmed: false,
+              },
+              warning: 'DO NOT call this endpoint again with the same parameters — your payment is pending.',
+            });
+          }
+        }
+
+        // No payment was attempted, or txid extraction failed — normal error path
         const label = fullUrl || url || path || "unknown";
         return formatEndpointError(error, label);
       }
