@@ -115,41 +115,33 @@ export const X402_HEADERS = {
 
 // ===== Functions =====
 
-/**
- * Decode the payment-required header from base64 JSON.
- * Returns null if the header is missing or cannot be decoded.
- */
-export function decodePaymentRequired(
-  header: string | null | undefined
-): PaymentRequiredV2 | null {
-  if (!header) return null;
+function decodeBase64Json<T>(encoded: string | null | undefined): T | null {
+  if (!encoded) return null;
   try {
-    const decoded = Buffer.from(header, "base64").toString("utf-8");
-    return JSON.parse(decoded) as PaymentRequiredV2;
+    return JSON.parse(Buffer.from(encoded, "base64").toString("utf-8")) as T;
   } catch {
     return null;
   }
 }
 
-/**
- * Encode a payment payload to base64 JSON.
- */
+export function decodePaymentRequired(
+  header: string | null | undefined
+): PaymentRequiredV2 | null {
+  return decodeBase64Json<PaymentRequiredV2>(header);
+}
+
 export function encodePaymentPayload(payload: PaymentPayloadV2): string {
   return Buffer.from(JSON.stringify(payload)).toString("base64");
 }
 
-/**
- * Decode the payment-response header from base64 JSON.
- * Returns null if the header is missing or cannot be decoded.
- */
+export function decodePaymentPayload(
+  encoded: string | null | undefined
+): PaymentPayloadV2 | null {
+  return decodeBase64Json<PaymentPayloadV2>(encoded);
+}
+
 export function decodePaymentResponse(
   header: string | null | undefined
 ): SettlementResponseV2 | null {
-  if (!header) return null;
-  try {
-    const decoded = Buffer.from(header, "base64").toString("utf-8");
-    return JSON.parse(decoded) as SettlementResponseV2;
-  } catch {
-    return null;
-  }
+  return decodeBase64Json<SettlementResponseV2>(header);
 }

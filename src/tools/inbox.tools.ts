@@ -15,18 +15,85 @@ import { createFungiblePostCondition } from "../transactions/post-conditions.js"
 import { createJsonResponse, createErrorResponse } from "../utils/index.js";
 import { InsufficientBalanceError } from "../utils/errors.js";
 import { formatSbtc } from "../utils/formatting.js";
+import { getHiroApi } from "../services/hiro-api.js";
+import { extractTxidFromPaymentSignature, pollTransactionConfirmation } from "../utils/x402-recovery.js";
 
 const INBOX_BASE = "https://aibtc.com/api/inbox";
+
+// ============================================================================
+// Nonce Manager
+// Per-address nonce cache with 120s TTL. Prevents ConflictingNonceInMempool
+// by tracking the highest known next-nonce across confirmed + mempool + local.
+// ============================================================================
+
+interface NonceCacheEntry {
+  nextNonce: number;
+  expiresAt: number;
+}
+
+const nonceCache: Map<string, NonceCacheEntry> = new Map();
+const NONCE_TTL_MS = 120_000;
+
+/**
+ * Compute the next safe nonce for a sender address.
+ * Takes the max of:
+ *   - confirmed account nonce (on-chain)
+ *   - highest pending mempool nonce + 1
+ *   - locally cached next nonce (from a recent send)
+ */
+async function getNextNonce(address: string): Promise<number> {
+  const hiroApi = getHiroApi(NETWORK);
+
+  const accountInfo = await hiroApi.getAccountInfo(address);
+  const confirmedNonce = accountInfo.nonce;
+
+  let highestMempoolNonce = -1;
+  try {
+    const mempool = await hiroApi.getMempoolTransactions({
+      sender_address: address,
+      limit: 50,
+    });
+    for (const tx of mempool.results) {
+      if (tx.nonce > highestMempoolNonce) {
+        highestMempoolNonce = tx.nonce;
+      }
+    }
+  } catch {
+    // Non-fatal: fall back to confirmed nonce only
+  }
+
+  const cached = nonceCache.get(address);
+  const fromCache = (cached && Date.now() < cached.expiresAt) ? cached.nextNonce : 0;
+
+  return Math.max(confirmedNonce, highestMempoolNonce + 1, fromCache);
+}
+
+/**
+ * Record that we used a nonce for an address so subsequent calls use a higher value.
+ */
+function advanceNonceCache(address: string, usedNonce: number): void {
+  const now = Date.now();
+  nonceCache.set(address, {
+    nextNonce: usedNonce + 1,
+    expiresAt: now + NONCE_TTL_MS,
+  });
+}
+
+// ============================================================================
+// Transaction Builder
+// ============================================================================
 
 /**
  * Build a sponsored sBTC transfer transaction (signed, not broadcast).
  * The inbox API handles settlement via the x402 relay.
+ * Accepts an explicit nonce to avoid ConflictingNonceInMempool errors.
  */
 async function buildSponsoredSbtcTransfer(
   senderKey: string,
   senderAddress: string,
   recipient: string,
-  amount: bigint
+  amount: bigint,
+  nonce: bigint
 ): Promise<string> {
   const contracts = getContracts(NETWORK);
   const { address: contractAddress, name: contractName } = parseContractId(
@@ -57,11 +124,57 @@ async function buildSponsoredSbtcTransfer(
     postConditions: [postCondition],
     sponsored: true,
     fee: 0n,
+    nonce,
   });
 
   // serialize() returns Hex string (no 0x prefix) in @stacks/transactions v7+
   return "0x" + transaction.serialize();
 }
+
+// ============================================================================
+// Retry helpers
+// ============================================================================
+
+/**
+ * Check if a response body / error indicates a retryable nonce conflict.
+ */
+function isRetryableError(status: number, body: unknown): boolean {
+  // Duplicate-message 409 from the inbox API must NOT be retried —
+  // the message was already delivered and retrying would re-pay.
+  if (status === 409) {
+    const bodyStr = typeof body === "string" ? body : JSON.stringify(body);
+    if (/already exists|duplicate/i.test(bodyStr)) {
+      return false;
+    }
+  }
+
+  if (typeof body === "object" && body !== null) {
+    const b = body as Record<string, unknown>;
+    // Relay returns retryable: true for SETTLEMENT_BROADCAST_FAILED (issue #157)
+    if (b["retryable"] === true) {
+      return true;
+    }
+    // Relay returns HTTP 409 with code: "NONCE_CONFLICT"
+    if (status === 409 && b["code"] === "NONCE_CONFLICT") {
+      return true;
+    }
+  }
+  if (typeof body === "string") {
+    return body.includes("ConflictingNonceInMempool") || body.includes("BadNonce");
+  }
+  return false;
+}
+
+/**
+ * Sleep for ms milliseconds.
+ */
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// ============================================================================
+// Tool Registration
+// ============================================================================
 
 export function registerInboxTools(server: McpServer): void {
   server.registerTool(
@@ -155,68 +268,123 @@ Use this instead of execute_x402_endpoint for inbox messages — the generic too
           );
         }
 
-        // Step 3: Build sponsored sBTC transfer
-        const txHex = await buildSponsoredSbtcTransfer(
-          account.privateKey,
-          account.address,
-          accept.payTo,
-          amount
-        );
+        // Steps 3-5: Build payment and send with retry loop
+        // Max 3 total attempts (1 initial + 2 retries)
+        const MAX_ATTEMPTS = 3;
+        const RETRY_DELAYS_MS = [1000, 2000];
 
-        // Step 4: Encode PaymentPayloadV2
-        const paymentSignature = encodePaymentPayload({
-          x402Version: 2,
-          resource: paymentRequired.resource,
-          accepted: accept,
-          payload: { transaction: txHex },
-        });
+        let lastError: string = "";
+        let paymentSignature: string | null = null;
 
-        // Step 5: Retry with payment
-        const finalRes = await fetch(inboxUrl, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            [X402_HEADERS.PAYMENT_SIGNATURE]: paymentSignature,
-          },
-          body: JSON.stringify(body),
-        });
+        for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+          if (attempt > 0) {
+            const delay = RETRY_DELAYS_MS[attempt - 1];
+            console.error(
+              `[send_inbox_message] Retry attempt ${attempt}/${MAX_ATTEMPTS - 1} after ${delay}ms`
+            );
+            await sleep(delay);
+          }
 
-        const responseData = await finalRes.text();
-        let parsed: Record<string, unknown>;
-        try {
-          parsed = JSON.parse(responseData);
-        } catch {
-          parsed = { raw: responseData };
-        }
-
-        if (finalRes.status === 201 || finalRes.status === 200) {
-          // Extract payment response header for txid
-          const settlement = decodePaymentResponse(
-            finalRes.headers.get(X402_HEADERS.PAYMENT_RESPONSE)
+          // Step 3: Fetch fresh nonce and build sponsored sBTC transfer
+          const nonce = await getNextNonce(account.address);
+          const txHex = await buildSponsoredSbtcTransfer(
+            account.privateKey,
+            account.address,
+            accept.payTo,
+            amount,
+            BigInt(nonce)
           );
-          const txid = settlement?.transaction;
 
-          return createJsonResponse({
-            success: true,
-            message: "Message delivered",
-            recipient: {
-              btcAddress: recipientBtcAddress,
-              stxAddress: recipientStxAddress,
-            },
-            contentLength: content.length,
-            inbox: parsed,
-            ...(txid && {
-              payment: {
-                txid,
-                amount: accept.amount + " sats sBTC",
-                explorer: getExplorerTxUrl(txid, NETWORK),
-              },
-            }),
+          // Step 4: Encode PaymentPayloadV2
+          paymentSignature = encodePaymentPayload({
+            x402Version: 2,
+            resource: paymentRequired.resource,
+            accepted: accept,
+            payload: { transaction: txHex },
           });
+
+          // Step 5: Send with payment header
+          const finalRes = await fetch(inboxUrl, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              [X402_HEADERS.PAYMENT_SIGNATURE]: paymentSignature,
+            },
+            body: JSON.stringify(body),
+          });
+
+          const responseData = await finalRes.text();
+          let parsed: Record<string, unknown>;
+          try {
+            parsed = JSON.parse(responseData);
+          } catch {
+            parsed = { raw: responseData };
+          }
+
+          if (finalRes.status === 201 || finalRes.status === 200) {
+            // Advance local nonce cache on success
+            advanceNonceCache(account.address, nonce);
+
+            // Extract payment response header for txid
+            const settlement = decodePaymentResponse(
+              finalRes.headers.get(X402_HEADERS.PAYMENT_RESPONSE)
+            );
+            const txid = settlement?.transaction;
+
+            return createJsonResponse({
+              success: true,
+              message: "Message delivered",
+              recipient: {
+                btcAddress: recipientBtcAddress,
+                stxAddress: recipientStxAddress,
+              },
+              contentLength: content.length,
+              inbox: parsed,
+              ...(txid && {
+                payment: {
+                  txid,
+                  amount: accept.amount + " sats sBTC",
+                  explorer: getExplorerTxUrl(txid, NETWORK),
+                },
+              }),
+            });
+          }
+
+          // Check if the error is retryable
+          const retryable = isRetryableError(finalRes.status, parsed);
+
+          if (retryable && attempt < MAX_ATTEMPTS - 1) {
+            console.error(
+              `[send_inbox_message] Retryable error on attempt ${attempt + 1}: status=${finalRes.status} body=${responseData}`
+            );
+            // Advance nonce cache even on failure so the next attempt uses a
+            // strictly higher nonce. Without this, getNextNonce could return the
+            // same value if the rejected tx never reached the mempool.
+            advanceNonceCache(account.address, nonce);
+            lastError = `${finalRes.status}: ${responseData}`;
+            continue;
+          }
+
+          // Non-retryable or last attempt — build error with txid recovery info
+          const txid = paymentSignature
+            ? extractTxidFromPaymentSignature(paymentSignature)
+            : null;
+
+          const errorBase = `Message delivery failed (${finalRes.status}): ${responseData}`;
+          if (txid) {
+            // Poll briefly for on-chain status so the error includes actionable info
+            const confirmation = await pollTransactionConfirmation(txid, NETWORK);
+            throw new Error(
+              `${errorBase}\n\nPayment transaction was submitted but settlement failed. ` +
+              `Transaction recovery info:\n  txid: ${confirmation.txid}\n  status: ${confirmation.status}\n  explorer: ${confirmation.explorer}`
+            );
+          }
+          throw new Error(errorBase);
         }
 
+        // Exhausted retries
         throw new Error(
-          `Message delivery failed (${finalRes.status}): ${responseData}`
+          `Message delivery failed after ${MAX_ATTEMPTS} attempts. Last error: ${lastError}`
         );
       } catch (error) {
         return createErrorResponse(error);
