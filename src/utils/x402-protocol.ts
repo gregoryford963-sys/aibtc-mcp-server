@@ -139,6 +139,23 @@ export function encodePaymentPayload(payload: PaymentPayloadV2): string {
 }
 
 /**
+ * Decode a payment payload from base64 JSON.
+ * Returns null if the input is missing or cannot be decoded.
+ * Used to extract the signed transaction from a payment-signature header.
+ */
+export function decodePaymentPayload(
+  encoded: string | null | undefined
+): PaymentPayloadV2 | null {
+  if (!encoded) return null;
+  try {
+    const decoded = Buffer.from(encoded, "base64").toString("utf-8");
+    return JSON.parse(decoded) as PaymentPayloadV2;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Decode the payment-response header from base64 JSON.
  * Returns null if the header is missing or cannot be decoded.
  */
