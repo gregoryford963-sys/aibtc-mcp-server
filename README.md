@@ -459,6 +459,10 @@ You ←→ Claude ←→ aibtc-mcp-server
         Stacks Blockchain  Paid API Services
 ```
 
+### Wallet Implementation
+
+The canonical wallet implementation is `src/services/wallet-manager.ts`. The root-level `src/wallet.ts` is a **deprecated compatibility shim** — all its exports are marked `@deprecated` and it is not imported by any active code. It will be removed in a future version. Do not import from `src/wallet.ts` in new code.
+
 ## Security Notes
 
 - Claude's wallet is stored encrypted on YOUR machine
