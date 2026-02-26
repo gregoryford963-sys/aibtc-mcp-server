@@ -3,7 +3,7 @@ import { StacksNetworkName } from "@stacks/network";
 export type Network = "mainnet" | "testnet";
 
 export const NETWORK: Network =
-  process.env.NETWORK === "mainnet" ? "mainnet" : "testnet";
+  process.env.NETWORK === "testnet" ? "testnet" : "mainnet";
 
 export const API_URL = process.env.API_URL || "https://x402.biwas.xyz";
 
