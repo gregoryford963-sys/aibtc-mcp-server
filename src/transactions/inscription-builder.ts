@@ -17,8 +17,10 @@ import {
   TX_OVERHEAD_VBYTES,
   DUST_THRESHOLD,
   P2TR_INPUT_BASE_VBYTES,
+  WITNESS_OVERHEAD_VBYTES,
 } from "../config/bitcoin-constants.js";
 import type { UTXO } from "../services/mempool-api.js";
+import { getBtcNetwork } from "./bitcoin-builder.js";
 
 /**
  * Inscription data structure
@@ -160,14 +162,6 @@ export interface BuildRevealTransactionResult {
   outputAmount: number;
 }
 
-
-/**
- * Get the @scure/btc-signer network object for a network name
- */
-function getBtcNetwork(network: Network): typeof btc.NETWORK {
-  return network === "testnet" ? btc.TEST_NETWORK : btc.NETWORK;
-}
-
 /**
  * Derive the Taproot P2TR reveal script from inscription data and sender public key.
  *
@@ -222,7 +216,6 @@ export function deriveRevealScript(
  * const inscription = {
  *   contentType: "text/plain",
  *   body: new TextEncoder().encode("Hello, Ordinals!"),
- *   compress: true,
  * };
  *
  * const result = buildCommitTransaction({
@@ -274,8 +267,7 @@ export function buildCommitTransaction(
   // Estimate reveal transaction size to determine commit amount
   // Reveal tx: 1 input (Taproot with inscription witness) + 1 output (recipient)
   // The witness includes the inscription data plus script & control-block overhead
-  const revealInputSize = P2TR_INPUT_BASE_VBYTES; // Taproot input base size (vbytes)
-  const WITNESS_OVERHEAD_VBYTES = 80; // Control block + script + protocol framing
+  const revealInputSize = P2TR_INPUT_BASE_VBYTES;
   const revealWitnessSize =
     Math.ceil((inscription.body.length / 4) * 1.25) + WITNESS_OVERHEAD_VBYTES;
   const revealTxSize = TX_OVERHEAD_VBYTES + revealInputSize + revealWitnessSize + P2TR_OUTPUT_VBYTES;

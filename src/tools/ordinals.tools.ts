@@ -21,6 +21,7 @@ import {
   TX_OVERHEAD_VBYTES,
   DUST_THRESHOLD,
   P2TR_INPUT_BASE_VBYTES,
+  WITNESS_OVERHEAD_VBYTES,
 } from "../config/bitcoin-constants.js";
 import { createJsonResponse, createErrorResponse } from "../utils/index.js";
 import {
@@ -144,8 +145,6 @@ export function registerOrdinalsTools(server: McpServer): void {
         const commitFee = Math.ceil(commitSize * actualFeeRate);
 
         // Reveal tx size (1 input with inscription witness + 1 output)
-        // Include overhead for control block, script, and protocol framing
-        const WITNESS_OVERHEAD_VBYTES = 80;
         const revealWitnessSize =
           Math.ceil((body.length / 4) * 1.25) + WITNESS_OVERHEAD_VBYTES;
         const revealSize =
