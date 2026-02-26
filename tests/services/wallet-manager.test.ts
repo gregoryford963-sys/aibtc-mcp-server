@@ -164,8 +164,8 @@ describe("WalletManager", () => {
 
       // Verify Bitcoin address is present and has correct format
       expect(wallets[0].btcAddress).toBeDefined();
-      // Testnet Bitcoin addresses start with tb1q (native SegWit)
-      expect(wallets[0].btcAddress).toMatch(/^tb1q[a-z0-9]{38,}$/);
+      // Mainnet Bitcoin addresses start with bc1q (native SegWit)
+      expect(wallets[0].btcAddress).toMatch(/^bc1q[a-z0-9]{38,}$/);
     });
   });
 
@@ -199,7 +199,7 @@ describe("WalletManager", () => {
       // Verify Bitcoin address matches original
       const wallets = await walletManager.listWallets();
       expect(wallets[0].btcAddress).toBe(originalBtcAddress);
-      expect(wallets[0].btcAddress).toMatch(/^tb1q[a-z0-9]{38,}$/);
+      expect(wallets[0].btcAddress).toMatch(/^bc1q[a-z0-9]{38,}$/);
     });
 
     it("should throw for invalid mnemonic", async () => {
@@ -229,7 +229,7 @@ describe("WalletManager", () => {
 
       // Verify Bitcoin address is included in account
       expect(account.btcAddress).toBeDefined();
-      expect(account.btcAddress).toMatch(/^tb1q[a-z0-9]{38,}$/);
+      expect(account.btcAddress).toMatch(/^bc1q[a-z0-9]{38,}$/);
 
       // Verify Bitcoin address matches metadata
       const wallets = await walletManager.listWallets();
@@ -279,7 +279,7 @@ describe("WalletManager", () => {
 
       // Verify Bitcoin address is exposed in session info
       expect(sessionInfo?.btcAddress).toBeDefined();
-      expect(sessionInfo?.btcAddress).toMatch(/^tb1q[a-z0-9]{38,}$/);
+      expect(sessionInfo?.btcAddress).toMatch(/^bc1q[a-z0-9]{38,}$/);
     });
 
     it("should return null session info when locked", () => {
@@ -496,7 +496,7 @@ describe("WalletManager", () => {
       expect(walletsAfterCreate).toHaveLength(1);
       const btcAddressFromCreate = walletsAfterCreate[0].btcAddress;
       expect(btcAddressFromCreate).toBeDefined();
-      expect(btcAddressFromCreate).toMatch(/^tb1q[a-z0-9]{38,}$/);
+      expect(btcAddressFromCreate).toMatch(/^bc1q[a-z0-9]{38,}$/);
 
       // Step 2: Unlock wallet and verify Bitcoin address in Account matches metadata
       const account = await walletManager.unlock(
