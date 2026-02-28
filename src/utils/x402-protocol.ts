@@ -175,22 +175,12 @@ export function generatePaymentId(): string {
   return `pay_${hex}`;
 }
 
-/**
- * Build a PaymentIdentifierExtension object ready to assign to
- * PaymentPayloadV2.extensions.
- *
- * Returns Record<string, unknown> so it is directly assignable to the
- * extensions field without a cast at each call site.
- *
- * @param id - A payment id from generatePaymentId()
- */
 export function buildPaymentIdentifierExtension(
   id: string
 ): Record<string, unknown> {
-  const ext: PaymentIdentifierExtension = {
+  return {
     "payment-identifier": {
       info: { id },
     },
-  };
-  return ext as unknown as Record<string, unknown>;
+  } satisfies PaymentIdentifierExtension;
 }

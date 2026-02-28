@@ -53,20 +53,20 @@ describe("generatePaymentId", function () {
 describe("buildPaymentIdentifierExtension", function () {
   it("should return an object with payment-identifier key", function () {
     const id = generatePaymentId();
-    const ext: PaymentIdentifierExtension = buildPaymentIdentifierExtension(id);
+    const ext = buildPaymentIdentifierExtension(id);
     expect(ext).toHaveProperty("payment-identifier");
   });
 
   it("should nest the id under info", function () {
     const id = generatePaymentId();
-    const ext = buildPaymentIdentifierExtension(id);
+    const ext = buildPaymentIdentifierExtension(id) as PaymentIdentifierExtension;
     expect(ext["payment-identifier"]).toHaveProperty("info");
     expect(ext["payment-identifier"].info).toHaveProperty("id");
   });
 
   it("should preserve the provided id exactly", function () {
     const id = generatePaymentId();
-    const ext = buildPaymentIdentifierExtension(id);
+    const ext = buildPaymentIdentifierExtension(id) as PaymentIdentifierExtension;
     expect(ext["payment-identifier"].info.id).toBe(id);
   });
 });
@@ -80,7 +80,7 @@ describe("round-trip encoding with PaymentPayloadV2", function () {
       x402Version: 2,
       accepted: makeAccepted(),
       payload: { transaction: "0xdeadbeef" },
-      extensions: { ...ext },
+      extensions: ext,
     };
 
     const encoded = encodePaymentPayload(payload);
