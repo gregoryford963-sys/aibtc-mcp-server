@@ -356,11 +356,6 @@ Use this instead of execute_x402_endpoint for inbox messages — the generic too
         let lastError: string = "";
         let paymentSignature: string | null = null;
 
-        // Generate a stable idempotency key once per logical send operation.
-        // All retry attempts share the same paymentId so the relay can deduplicate
-        // using the payment-identifier extension rather than tx hex variation.
-        const paymentId = generatePaymentId();
-
         // Track relay txids across failed attempts to detect stale dedup.
         const seenRelayTxids = new Set<string>();
 
@@ -383,9 +378,10 @@ Use this instead of execute_x402_endpoint for inbox messages — the generic too
             BigInt(nonce)
           );
 
-          // Step 4: Encode PaymentPayloadV2 with stable payment-identifier extension.
-          // The relay uses the extension id as an idempotency key so retries with a
-          // rebuilt tx hex are still recognised as the same logical payment attempt.
+          // Step 4: Encode PaymentPayloadV2 with payment-identifier extension.
+          // Each attempt gets a fresh paymentId since the tx hex changes per retry
+          // (fresh nonce). The relay treats same id + different payload as 409 Conflict.
+          const paymentId = generatePaymentId();
           paymentSignature = encodePaymentPayload({
             x402Version: 2,
             resource: paymentRequired.resource,

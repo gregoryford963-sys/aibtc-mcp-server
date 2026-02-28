@@ -59,14 +59,14 @@ describe("buildPaymentIdentifierExtension", function () {
 
   it("should nest the id under info", function () {
     const id = generatePaymentId();
-    const ext = buildPaymentIdentifierExtension(id) as PaymentIdentifierExtension;
+    const ext = buildPaymentIdentifierExtension(id);
     expect(ext["payment-identifier"]).toHaveProperty("info");
     expect(ext["payment-identifier"].info).toHaveProperty("id");
   });
 
   it("should preserve the provided id exactly", function () {
     const id = generatePaymentId();
-    const ext = buildPaymentIdentifierExtension(id) as PaymentIdentifierExtension;
+    const ext = buildPaymentIdentifierExtension(id);
     expect(ext["payment-identifier"].info.id).toBe(id);
   });
 });

@@ -160,6 +160,7 @@ export function decodePaymentResponse(
  * - Same id + different payload = 409 Conflict
  */
 export interface PaymentIdentifierExtension {
+  [key: string]: unknown;
   "payment-identifier": {
     info: { id: string };
   };
@@ -177,10 +178,10 @@ export function generatePaymentId(): string {
 
 export function buildPaymentIdentifierExtension(
   id: string
-): Record<string, unknown> {
+): PaymentIdentifierExtension {
   return {
     "payment-identifier": {
       info: { id },
     },
-  } satisfies PaymentIdentifierExtension;
+  };
 }
