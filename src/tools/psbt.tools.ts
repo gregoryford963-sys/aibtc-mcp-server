@@ -29,16 +29,31 @@ function encodePsbtBase64(tx: btc.Transaction): string {
   return Buffer.from(tx.toPSBT()).toString("base64");
 }
 
+function decodeScriptType(script: Uint8Array): string {
+  try {
+    return btc.OutScript.decode(script).type;
+  } catch {
+    return "unknown";
+  }
+}
+
 function detectInputScriptType(input: ReturnType<btc.Transaction["getInput"]>): string {
   if (!input.witnessUtxo?.script) {
     return "unknown";
   }
+  return decodeScriptType(input.witnessUtxo.script);
+}
 
-  try {
-    return btc.OutScript.decode(input.witnessUtxo.script).type;
-  } catch {
-    return "unknown";
+function getInputSigningStatus(
+  input: ReturnType<btc.Transaction["getInput"]>
+): "finalized" | "partially_signed" | "unsigned" {
+  if (input.finalScriptSig || input.finalScriptWitness) {
+    return "finalized";
   }
+  if (input.partialSig?.length || input.tapKeySig) {
+    return "partially_signed";
+  }
+  return "unsigned";
 }
 
 function chooseSellerInputVbytes(scriptType: string): number {
@@ -139,13 +154,7 @@ export function registerPsbtTools(server: McpServer): void {
           throw new Error("Inscription output amount is invalid or too large.");
         }
 
-        const sellerScriptType = (() => {
-          try {
-            return btc.OutScript.decode(inscriptionScript).type;
-          } catch {
-            return "unknown";
-          }
-        })();
+        const sellerScriptType = decodeScriptType(inscriptionScript);
 
         const sellerInputVbytes = chooseSellerInputVbytes(sellerScriptType);
         const feeTiers = await mempool.getFeeTiers();
@@ -423,12 +432,7 @@ export function registerPsbtTools(server: McpServer): void {
             hasNonWitnessUtxo: !!input.nonWitnessUtxo,
             partialSigCount: input.partialSig?.length ?? 0,
             hasTapKeySig: !!input.tapKeySig,
-            status:
-              input.finalScriptSig || input.finalScriptWitness
-                ? "finalized"
-                : input.partialSig?.length || input.tapKeySig
-                  ? "partially_signed"
-                  : "unsigned",
+            status: getInputSigningStatus(input),
           };
         });
 

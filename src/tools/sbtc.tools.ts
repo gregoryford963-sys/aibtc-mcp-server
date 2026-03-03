@@ -22,25 +22,20 @@ function parseBtcRecipientTuple(btcRecipientAddress: string): {
     return { version: 0x06, hashbytesHex: Buffer.from(decoded.pubkey).toString("hex") };
   }
 
-  if (
-    (decoded.type === "pkh" || decoded.type === "sh" || decoded.type === "wpkh" || decoded.type === "wsh") &&
-    decoded.hash
-  ) {
-    const versionMap: Record<string, number> = {
-      pkh: 0x00,
-      sh: 0x01,
-      wpkh: 0x04,
-      wsh: 0x05,
-    };
-    return {
-      version: versionMap[decoded.type],
-      hashbytesHex: Buffer.from(decoded.hash).toString("hex"),
-    };
+  switch (decoded.type) {
+    case "pkh":
+      return { version: 0x00, hashbytesHex: Buffer.from(decoded.hash).toString("hex") };
+    case "sh":
+      return { version: 0x01, hashbytesHex: Buffer.from(decoded.hash).toString("hex") };
+    case "wpkh":
+      return { version: 0x04, hashbytesHex: Buffer.from(decoded.hash).toString("hex") };
+    case "wsh":
+      return { version: 0x05, hashbytesHex: Buffer.from(decoded.hash).toString("hex") };
+    default:
+      throw new Error(
+        "Unsupported BTC recipient address type. Supported: P2PKH, P2SH, P2WPKH, P2WSH, P2TR."
+      );
   }
-
-  throw new Error(
-    "Unsupported BTC recipient address type. Supported: P2PKH, P2SH, P2WPKH, P2WSH, P2TR."
-  );
 }
 
 function getReadonlySenderAddress(): string {
@@ -125,6 +120,69 @@ Example: To send 0.001 sBTC, use amount "100000" (satoshis).`,
     }
   );
 
+  // Shared withdrawal logic used by both sbtc_initiate_withdrawal and sbtc_withdraw
+  async function executeWithdrawal(params: {
+    amount: number;
+    btcRecipientAddress: string;
+    maxFee: number;
+    fee?: string;
+    sponsored: boolean;
+  }) {
+    const { amount, btcRecipientAddress, maxFee, fee, sponsored } = params;
+
+    if (amount <= maxFee) {
+      throw new Error(
+        `Withdrawal amount must exceed maxFee. amount=${amount}, maxFee=${maxFee}`
+      );
+    }
+
+    const sbtcService = getSbtcService(NETWORK);
+    const account = await getAccount();
+    const resolvedFee = await resolveFee(fee, NETWORK, "contract_call");
+    const recipientTuple = parseBtcRecipientTuple(btcRecipientAddress);
+
+    const result = await sbtcService.initiateWithdrawal(
+      account,
+      BigInt(amount),
+      BigInt(maxFee),
+      recipientTuple,
+      resolvedFee,
+      sponsored
+    );
+
+    let requestId: number | null = null;
+    try {
+      requestId = await sbtcService.getWithdrawalRequestIdFromTx(result.txid);
+    } catch {
+      requestId = null;
+    }
+
+    return { result, recipientTuple, requestId };
+  }
+
+  const withdrawalInputSchema = {
+    amount: z
+      .number()
+      .int()
+      .positive()
+      .describe("Amount to withdraw in satoshis"),
+    btcRecipientAddress: z
+      .string()
+      .describe("Bitcoin recipient address (P2PKH/P2SH/P2WPKH/P2WSH/P2TR)"),
+    maxFee: z
+      .number()
+      .int()
+      .nonnegative()
+      .optional()
+      .default(2000)
+      .describe("Maximum signer fee in satoshis"),
+    fee: z
+      .string()
+      .optional()
+      .describe("Optional fee: 'low' | 'medium' | 'high' preset or micro-STX amount."),
+    sponsored: sponsoredSchema,
+  };
+
   // Initiate sBTC withdrawal (peg-out to BTC L1)
   server.registerTool(
     "sbtc_initiate_withdrawal",
@@ -133,57 +191,13 @@ Example: To send 0.001 sBTC, use amount "100000" (satoshis).`,
 
 Locks (amount + maxFee) of sBTC in the sBTC protocol and creates a withdrawal request.
 Signers later process the request and send BTC on L1.`,
-      inputSchema: {
-        amount: z
-          .number()
-          .int()
-          .positive()
-          .describe("Amount to withdraw in satoshis"),
-        btcRecipientAddress: z
-          .string()
-          .describe("Bitcoin recipient address (P2PKH/P2SH/P2WPKH/P2WSH/P2TR)"),
-        maxFee: z
-          .number()
-          .int()
-          .nonnegative()
-          .optional()
-          .default(2000)
-          .describe("Maximum signer fee in satoshis"),
-        fee: z
-          .string()
-          .optional()
-          .describe("Optional fee: 'low' | 'medium' | 'high' preset or micro-STX amount."),
-        sponsored: sponsoredSchema,
-      },
+      inputSchema: withdrawalInputSchema,
     },
     async ({ amount, btcRecipientAddress, maxFee, fee, sponsored }) => {
       try {
-        if (amount <= maxFee) {
-          throw new Error(
-            `Withdrawal amount must exceed maxFee. amount=${amount}, maxFee=${maxFee}`
-          );
-        }
-
-        const sbtcService = getSbtcService(NETWORK);
-        const account = await getAccount();
-        const resolvedFee = await resolveFee(fee, NETWORK, "contract_call");
-        const recipientTuple = parseBtcRecipientTuple(btcRecipientAddress);
-
-        const result = await sbtcService.initiateWithdrawal(
-          account,
-          BigInt(amount),
-          BigInt(maxFee),
-          recipientTuple,
-          resolvedFee,
-          sponsored
-        );
-
-        let requestId: number | null = null;
-        try {
-          requestId = await sbtcService.getWithdrawalRequestIdFromTx(result.txid);
-        } catch {
-          requestId = null;
-        }
+        const { result, recipientTuple, requestId } = await executeWithdrawal({
+          amount, btcRecipientAddress, maxFee, fee, sponsored,
+        });
 
         return createJsonResponse({
           success: true,
@@ -212,50 +226,19 @@ Signers later process the request and send BTC on L1.`,
     }
   );
 
-  // Compatibility alias for older naming.
+  // Compatibility alias for sbtc_initiate_withdrawal
   server.registerTool(
     "sbtc_withdraw",
     {
       description:
         "Alias for sbtc_initiate_withdrawal. Initiates an sBTC peg-out request to BTC L1.",
-      inputSchema: {
-        amount: z.number().int().positive().describe("Amount to withdraw in satoshis"),
-        btcRecipientAddress: z.string().describe("Bitcoin recipient address"),
-        maxFee: z
-          .number()
-          .int()
-          .nonnegative()
-          .optional()
-          .default(2000)
-          .describe("Maximum signer fee in satoshis"),
-        fee: z
-          .string()
-          .optional()
-          .describe("Optional fee: 'low' | 'medium' | 'high' preset or micro-STX amount."),
-        sponsored: sponsoredSchema,
-      },
+      inputSchema: withdrawalInputSchema,
     },
     async ({ amount, btcRecipientAddress, maxFee, fee, sponsored }) => {
       try {
-        if (amount <= maxFee) {
-          throw new Error(
-            `Withdrawal amount must exceed maxFee. amount=${amount}, maxFee=${maxFee}`
-          );
-        }
-
-        const sbtcService = getSbtcService(NETWORK);
-        const account = await getAccount();
-        const resolvedFee = await resolveFee(fee, NETWORK, "contract_call");
-        const recipientTuple = parseBtcRecipientTuple(btcRecipientAddress);
-
-        const result = await sbtcService.initiateWithdrawal(
-          account,
-          BigInt(amount),
-          BigInt(maxFee),
-          recipientTuple,
-          resolvedFee,
-          sponsored
-        );
+        const { result } = await executeWithdrawal({
+          amount, btcRecipientAddress, maxFee, fee, sponsored,
+        });
 
         return createJsonResponse({
           success: true,
@@ -312,8 +295,12 @@ Signers later process the request and send BTC on L1.`,
           }
         }
 
+        if (resolvedRequestId == null) {
+          throw new Error("Unable to resolve withdrawal request ID.");
+        }
+
         const request = await sbtcService.getWithdrawalRequest(
-          resolvedRequestId!,
+          resolvedRequestId,
           getReadonlySenderAddress()
         );
 
