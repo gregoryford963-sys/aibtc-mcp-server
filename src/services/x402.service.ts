@@ -337,9 +337,10 @@ export type ProbeResult = ProbeResultFree | ProbeResultPaymentRequired;
  */
 export function detectTokenType(asset: string): 'STX' | 'sBTC' {
   const assetLower = asset.trim().toLowerCase();
-  // Treat as sBTC only if the asset is exactly "sbtc" (token name)
-  // or a full contract identifier ending with "::token-sbtc"
-  if (assetLower === 'sbtc' || assetLower.endsWith('::token-sbtc')) {
+  // Treat as sBTC if the asset is exactly "sbtc" (token name),
+  // a full contract identifier ending with "::token-sbtc",
+  // or a contract identifier whose name is ".sbtc-token"
+  if (assetLower === 'sbtc' || assetLower.endsWith('::token-sbtc') || assetLower.includes('.sbtc-token')) {
     return 'sBTC';
   }
   return 'STX';
@@ -491,7 +492,8 @@ export function recordTransaction(key: string, txid: string): void {
 export async function checkSufficientBalance(
   account: Account,
   amount: string,
-  asset: string
+  asset: string,
+  sponsored = false
 ): Promise<void> {
   const tokenType = detectTokenType(asset);
   const requiredAmount = BigInt(amount);
@@ -513,24 +515,27 @@ export async function checkSufficientBalance(
       );
     }
 
-    // sBTC transfers are contract calls that also require STX for gas fees
-    const hiroApiForSbtc = getHiroApi(account.network);
-    const stxInfoForSbtc = await hiroApiForSbtc.getStxBalance(account.address);
-    const stxBalanceForSbtc = BigInt(stxInfoForSbtc.balance);
-    const sbtcFees = await hiroApiForSbtc.getMempoolFees();
-    const estimatedSbtcFee = BigInt(sbtcFees.contract_call.high_priority);
+    // sBTC transfers are contract calls that also require STX for gas fees,
+    // unless the transaction is sponsored (relay pays gas; fee: 0n).
+    if (!sponsored) {
+      const hiroApiForSbtc = getHiroApi(account.network);
+      const stxInfoForSbtc = await hiroApiForSbtc.getStxBalance(account.address);
+      const stxBalanceForSbtc = BigInt(stxInfoForSbtc.balance);
+      const sbtcFees = await hiroApiForSbtc.getMempoolFees();
+      const estimatedSbtcFee = BigInt(sbtcFees.contract_call.high_priority);
 
-    if (stxBalanceForSbtc < estimatedSbtcFee) {
-      const stxShortfall = estimatedSbtcFee - stxBalanceForSbtc;
-      throw new InsufficientBalanceError(
-        `Insufficient STX balance to cover sBTC transfer fee: need ${formatStx(estimatedSbtcFee.toString())} estimated fee, ` +
-        `have ${formatStx(stxInfoForSbtc.balance)} (shortfall: ${formatStx(stxShortfall.toString())}). ` +
-        `Deposit more STX or use a different wallet.`,
-        'STX',
-        stxInfoForSbtc.balance,
-        estimatedSbtcFee.toString(),
-        stxShortfall.toString()
-      );
+      if (stxBalanceForSbtc < estimatedSbtcFee) {
+        const stxShortfall = estimatedSbtcFee - stxBalanceForSbtc;
+        throw new InsufficientBalanceError(
+          `Insufficient STX balance to cover sBTC transfer fee: need ${formatStx(estimatedSbtcFee.toString())} estimated fee, ` +
+          `have ${formatStx(stxInfoForSbtc.balance)} (shortfall: ${formatStx(stxShortfall.toString())}). ` +
+          `Deposit more STX or use a different wallet.`,
+          'STX',
+          stxInfoForSbtc.balance,
+          estimatedSbtcFee.toString(),
+          stxShortfall.toString()
+        );
+      }
     }
 
     return;
@@ -541,15 +546,18 @@ export async function checkSufficientBalance(
   const balanceInfo = await hiroApi.getStxBalance(account.address);
   const balance = BigInt(balanceInfo.balance);
 
-  const mempoolFees = await hiroApi.getMempoolFees();
-  const estimatedFee = BigInt(mempoolFees.contract_call.high_priority);
-  const totalRequired = requiredAmount + estimatedFee;
+  let totalRequired = requiredAmount;
+  if (!sponsored) {
+    const mempoolFees = await hiroApi.getMempoolFees();
+    const estimatedFee = BigInt(mempoolFees.contract_call.high_priority);
+    totalRequired = requiredAmount + estimatedFee;
+  }
 
   if (balance >= totalRequired) return;
 
   const shortfall = totalRequired - balance;
   throw new InsufficientBalanceError(
-    `Insufficient STX balance: need ${formatStx(totalRequired.toString())} (${formatStx(amount)} payment + ${formatStx(estimatedFee.toString())} estimated fee), ` +
+    `Insufficient STX balance: need ${formatStx(totalRequired.toString())} (${formatStx(amount)} payment${!sponsored ? ` + estimated fee` : ''}), ` +
     `have ${formatStx(balanceInfo.balance)} (shortfall: ${formatStx(shortfall.toString())}). ` +
     `Deposit more STX or use a different wallet.`,
     'STX',

@@ -330,7 +330,7 @@ For aibtc.com inbox messages, use send_inbox_message instead — it uses sponsor
           }
 
           const account = await getAccount();
-          await checkSufficientBalance(account, probeResult.amount, probeResult.asset);
+          await checkSufficientBalance(account, probeResult.amount, probeResult.asset, true);
 
           const api = await createApiClient(parsed.baseUrl);
           const response = await api.request({ method, url: parsed.requestPath, params, data });
