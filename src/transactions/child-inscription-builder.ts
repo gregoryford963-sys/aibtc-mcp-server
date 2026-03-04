@@ -382,6 +382,7 @@ export function buildChildRevealTransaction(
       script: parentP2tr.script,
       amount: BigInt(parentUtxo.value),
     },
+    tapInternalKey: parentOwnerTaprootInternalPubKey,
   });
 
   // Output[0]: Parent return → owner's P2TR address (dust)
