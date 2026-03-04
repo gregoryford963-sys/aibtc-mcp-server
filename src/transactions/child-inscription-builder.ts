@@ -420,24 +420,27 @@ export async function lookupParentInscription(
   }
 
   const data = (await response.json()) as {
-    txid?: string;
-    vout?: number;
-    value?: string;
+    tx_id?: string;
+    value?: number;
     address?: string;
     output?: string;
   };
 
-  if (!data.txid || data.vout === undefined || !data.value || !data.address) {
+  if (!data.tx_id || !data.output || data.value === undefined || !data.address) {
     throw new Error(
       `Inscription ${inscriptionId} not found or missing UTXO data`
     );
   }
 
+  // Xverse returns output as "txid:vout" — parse vout from it
+  const outputParts = data.output.split(":");
+  const vout = parseInt(outputParts[1], 10);
+
   return {
-    txid: data.txid,
-    vout: data.vout,
-    value: parseInt(data.value, 10),
+    txid: data.tx_id,
+    vout,
+    value: data.value,
     address: data.address,
-    output: data.output || `${data.txid}:${data.vout}`,
+    output: data.output,
   };
 }
