@@ -39,7 +39,7 @@ async function main() {
   console.log(`\n--- getUserPosition(${asset}) ---`);
   const position = await zest.getUserPosition(asset, account.address);
   if (position) {
-    console.log(`  Supplied (shares): ${position.supplied}`);
+    console.log(`  Supplied (shares): ${position.suppliedShares}`);
     console.log(`  Borrowed: ${position.borrowed}`);
     console.log(`  Health Factor: ${position.healthFactor}`);
   } else {

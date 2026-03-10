@@ -149,7 +149,8 @@ async function fetchZestApy(): Promise<number> {
     const decoded = cvToJSON(hexToCV(result.result));
     const rateValue = decoded?.value?.value ?? decoded?.value;
     if (rateValue) {
-      // Convert rate to basis points
+      // v2 vault get-interest-rate returns rate in 1e8 scale (like v1 current-liquidity-rate)
+      // Divide by 10000 to convert to basis points (1 bps = 0.01%)
       const apyBps = Number(BigInt(rateValue) / 10000n);
       state.stats.currentApy = apyBps;
       state.stats.lastApyFetch = new Date();
@@ -273,7 +274,7 @@ async function runYieldCheck(): Promise<void> {
       () => zest.getUserPosition(ZEST_ASSETS.sBTC.token, account.address),
       "Fetch Zest position"
     );
-    const zestSupplied = position ? BigInt(position.supplied) : 0n;
+    const zestSupplied = position ? BigInt(position.suppliedShares) : 0n;
     addLog("info", `Zest supplied: ${formatSats(zestSupplied)}`);
 
     // Calculate amount to deposit (keep reserve if configured)
@@ -670,7 +671,7 @@ async function getFullStatus() {
         fetchZestApy(),
       ]);
 
-      const zestSupplied = BigInt(position?.supplied || "0");
+      const zestSupplied = BigInt(position?.suppliedShares || "0");
       const availableToDeposit = walletBalance > state.config.reserve
         ? walletBalance - state.config.reserve
         : 0n;
@@ -686,7 +687,7 @@ async function getFullStatus() {
           availableToDepositFormatted: formatSats(availableToDeposit),
           reserve: state.config.reserve.toString(),
           reserveFormatted: formatSats(state.config.reserve),
-          zestSupplied: position?.supplied || "0",
+          zestSupplied: position?.suppliedShares || "0",
           zestSuppliedFormatted: formatSats(zestSupplied),
           zestBorrowed: position?.borrowed || "0",
         },

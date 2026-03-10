@@ -39,7 +39,7 @@ async function main() {
   const position = await zest.getUserPosition(asset, account.address);
   console.log(`\nPosition before: ${JSON.stringify(position)}`);
 
-  if (!position || position.supplied === "0") {
+  if (!position || position.suppliedShares === "0") {
     console.error("\nWARNING: No collateral detected. Borrow will likely fail.");
     console.error("Supply collateral first: npx tsx tests/zest-v2-supply.test.ts <amount>");
   }

@@ -69,7 +69,7 @@ export interface ZestMarketInfo {
 
 export interface ZestUserPosition {
   asset: string;
-  supplied: string;
+  suppliedShares: string;
   borrowed: string;
   healthFactor?: string;
 }
@@ -475,7 +475,7 @@ export class ZestProtocolService {
 
       return {
         asset,
-        supplied: suppliedShares,
+        suppliedShares,
         borrowed,
         healthFactor: position["health-factor"]?.value,
       };
@@ -620,7 +620,7 @@ export class ZestProtocolService {
     const functionArgs: ClarityValue[] = [
       contractPrincipalCV(assetAddr, assetName),  // ft (underlying token)
       uintCV(amount),                              // amount
-      uintCV(0n),                                  // min-shares (0 = no slippage protection)
+      uintCV(expectedShares > 0n ? (expectedShares * 95n) / 100n : 0n),  // min-shares (5% slippage tolerance)
       noneCV(),                                    // price-feeds (use cached)
     ];
 
@@ -650,10 +650,10 @@ export class ZestProtocolService {
    * Withdraw assets from Zest v2 via market's collateral-remove-redeem.
    * Atomically removes zToken collateral and redeems for underlying.
    *
-   * Token flow (2 ft-transfers):
+   * Token flow (3 ft-transfers):
    * 1. market-vault → market (zTokens released from collateral)
-   * 2. vault → user (underlying redeemed)
-   * Note: zTokens are burned by vault (ft-burn, no PC needed)
+   * 2. market → vault (zTokens for redemption/burn)
+   * 3. vault → user (underlying redeemed)
    *
    * Contract: v0-4-market.collateral-remove-redeem(ft, amount, min-underlying, receiver, price-feeds)
    *
@@ -677,7 +677,7 @@ export class ZestProtocolService {
     const functionArgs: ClarityValue[] = [
       contractPrincipalCV(vaultAddr, vaultName),  // ft (zToken / vault contract, NOT underlying)
       uintCV(amount),                              // amount (zToken shares)
-      uintCV(0n),                                  // min-underlying (0 = no slippage protection)
+      uintCV(expectedUnderlying > 0n ? (expectedUnderlying * 95n) / 100n : 0n),  // min-underlying (5% slippage tolerance)
       noneCV(),                                    // receiver (none = tx-sender)
       noneCV(),                                    // price-feeds (use cached)
     ];

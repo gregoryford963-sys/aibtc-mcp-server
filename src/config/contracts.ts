@@ -51,7 +51,7 @@ export interface ZestAssetConfig {
   /** FT asset name for the underlying (e.g. "sbtc-token" from sbtc-token::sbtc-token). null for wSTX which uses native STX transfers. */
   tokenAssetName: string | null;
   vault: string;
-  assetId: number; // bitmap position in v2 market-vault
+  assetId: number; // v2 asset index from v0-1-data: STX=0, zSTX=1, sBTC=2, zsBTC=3, stSTX=4, etc. Evens=underlying, odds=zTokens
   decimals: number;
   symbol: string;
   name: string;
