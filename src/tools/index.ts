@@ -9,6 +9,7 @@ import { registerTokenTools } from "./tokens.tools.js";
 import { registerNftTools } from "./nft.tools.js";
 import { registerStackingTools } from "./stacking.tools.js";
 import { registerBnsTools } from "./bns.tools.js";
+import { registerStyxTools } from "./styx.tools.js";
 import { registerQueryTools } from "./query.tools.js";
 import { registerEndpointTools } from "./endpoint.tools.js";
 import { registerDefiTools } from "./defi.tools.js";
@@ -63,6 +64,9 @@ export function registerAllTools(server: McpServer): void {
 
   // Bitflow DEX (disabled until API key integration is complete)
   // registerBitflowTools(server);
+
+  // Styx BTC→sBTC conversion
+  registerStyxTools(server);
 
   // Scaffolding (generate x402 endpoint projects)
   registerScaffoldTools(server);
