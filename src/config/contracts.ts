@@ -66,7 +66,7 @@ export const ZEST_V2_MARKET_VAULT = `${ZEST_V2_DEPLOYER}.v0-market-vault`;
 export const ZEST_ASSETS: Record<string, ZestAssetConfig> = {
   wSTX: {
     token: `${ZEST_V2_DEPLOYER}.wstx`,
-    tokenAssetName: null, // uses native stx-transfer?, not ft-transfer?
+    tokenAssetName: null, // confirmed: wstx.transfer calls stx-transfer? (native STX, not ft-transfer?)
     vault: `${ZEST_V2_DEPLOYER}.v0-vault-stx`,
     assetId: 0,
     decimals: 6,
@@ -95,7 +95,7 @@ export const ZEST_ASSETS: Record<string, ZestAssetConfig> = {
     isNativeStx: false,
   },
   USDC: {
-    token: "SP120SBRBQJ00MCWS7TM5R8WJNTTKD5K0HFRC2CNE.usdcx",
+    token: "SP120SBRBQJ00MCWS7TM5R8WJNTTKD5K0HFRC2CNE.usdcx", // confirmed: v0-vault-usdc UNDERLYING constant
     tokenAssetName: "usdcx-token",
     vault: `${ZEST_V2_DEPLOYER}.v0-vault-usdc`,
     assetId: 6,

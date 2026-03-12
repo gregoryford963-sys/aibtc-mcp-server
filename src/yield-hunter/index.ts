@@ -123,8 +123,9 @@ async function runCheck(account: Account, config: YieldHunterConfig, state: Yiel
 
   // Get current Zest position
   const position = await zest.getUserPosition(ZEST_ASSETS.sBTC.token, account.address);
+  // Note: suppliedShares are zToken shares which appreciate over time (shares ≈ underlying at launch)
   const zestSupplied = position ? BigInt(position.suppliedShares) : 0n;
-  log(`Zest supplied: ${formatSats(zestSupplied)}`);
+  log(`Zest supplied (shares): ${formatSats(zestSupplied)}`);
 
   // Check if we should deposit
   if (walletBalance >= config.minDepositThreshold) {

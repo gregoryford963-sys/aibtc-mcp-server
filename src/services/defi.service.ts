@@ -430,9 +430,8 @@ export class ZestProtocolService {
   ): Promise<ZestUserPosition | null> {
     this.ensureMainnet();
 
-    const assetConfig = this.getAssetConfig(asset);
-
     try {
+      const assetConfig = this.getAssetConfig(asset);
       const result = await this.hiro.callReadOnlyFunction(
         this.contracts!.data,
         "get-user-position",
@@ -810,9 +809,12 @@ export class ZestProtocolService {
     const assetConfig = this.getAssetConfig(asset);
     const { address, name } = parseContractId(assetConfig.vault);
 
+    // Pre-query expected shares for slippage protection
+    const expectedShares = await this.getExpectedShares(assetConfig, amount, account.address);
+
     const functionArgs: ClarityValue[] = [
       uintCV(amount),                     // amount
-      uintCV(0n),                          // min-out (0 = no slippage protection)
+      uintCV(expectedShares > 0n ? (expectedShares * 95n) / 100n : 0n),  // min-out (5% slippage tolerance)
       principalCV(account.address),        // recipient
     ];
 
@@ -857,7 +859,7 @@ export class ZestProtocolService {
 
     const functionArgs: ClarityValue[] = [
       uintCV(amount),                     // amount (zToken shares)
-      uintCV(0n),                          // min-out (0 = no slippage protection)
+      uintCV(expectedUnderlying > 0n ? (expectedUnderlying * 95n) / 100n : 0n),  // min-out (5% slippage tolerance)
       principalCV(account.address),        // recipient
     ];
 
