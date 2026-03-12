@@ -152,8 +152,11 @@ export function registerStyxTools(server: McpServer): void {
         "Minimum deposit: 10,000 sats. Pool limits: main=300k sats, aibtc=1M sats.",
       inputSchema: {
         amount: z
-          .string()
-          .describe("Amount to deposit in satoshis (min 10000). Example: '50000'"),
+          .coerce
+          .number()
+          .int()
+          .min(MIN_DEPOSIT_SATS)
+          .describe(`Amount to deposit in satoshis (min ${MIN_DEPOSIT_SATS}). Example: 50000`),
         stxReceiver: z
           .string()
           .optional()
@@ -180,16 +183,8 @@ export function registerStyxTools(server: McpServer): void {
       let broadcastTxid: string | undefined;
 
       try {
-        // Validate amount
-        const amountSats = parseInt(amount, 10);
-        if (isNaN(amountSats) || amountSats <= 0) {
-          throw new Error("amount must be a positive integer (satoshis)");
-        }
-        if (amountSats < MIN_DEPOSIT_SATS) {
-          throw new Error(
-            `Amount ${amountSats} sats is below minimum deposit (${MIN_DEPOSIT_SATS} sats)`
-          );
-        }
+        // amount is validated by z.coerce.number().int().min(MIN_DEPOSIT_SATS) — no manual checks needed
+        const amountSats = amount;
 
         // Validate fee priority (belt-and-suspenders since zod enum already validates)
         const feePriority = fee as FeePriority;
@@ -249,6 +244,7 @@ export function registerStyxTools(server: McpServer): void {
 
         // Step 3: Filter ordinal UTXOs on mainnet to protect inscriptions
         let safeUtxos = prepared.utxos;
+        let ordinalsFiltered = false;
         if (NETWORK === "mainnet") {
           const indexer = new OrdinalIndexer(NETWORK);
           const cardinalUtxos = await indexer.getCardinalUtxos(resolvedBtcSender);
@@ -286,6 +282,7 @@ export function registerStyxTools(server: McpServer): void {
             }
             prepared.changeAmount =
               filteredTotal - prepared.amountInSatoshis - originalFee;
+            ordinalsFiltered = true;
           }
           safeUtxos = filtered;
         }
@@ -306,20 +303,21 @@ export function registerStyxTools(server: McpServer): void {
           });
         }
 
-        // Deposit output to Styx address
-        tx.addOutputAddress(
-          prepared.depositAddress,
-          BigInt(prepared.amountInSatoshis),
-          btcNetwork
-        );
-
-        // OP_RETURN output — Styx SDK provides a full script hex (starts with 6a)
+        // OP_RETURN output FIRST (output index 0) — Styx contract requires OP_RETURN at index 0
+        // Styx SDK provides a full script hex (starts with 6a = OP_RETURN opcode)
         if (prepared.opReturnData) {
           tx.addOutput({
             script: hex.decode(prepared.opReturnData),
             amount: BigInt(0),
           });
         }
+
+        // Deposit output to Styx address (output index 1)
+        tx.addOutputAddress(
+          prepared.depositAddress,
+          BigInt(prepared.amountInSatoshis),
+          btcNetwork
+        );
 
         // Change output
         if (prepared.changeAmount > 0) {
@@ -367,8 +365,11 @@ export function registerStyxTools(server: McpServer): void {
           amount: { sats: amountSats, btc: btcAmount },
           pool,
           depositAddress: prepared.depositAddress,
-          fee: prepared.fee,
-          feeRate: prepared.feeRate,
+          // fee/feeRate are omitted when ordinal filtering occurred — those values were
+          // computed against the original UTXO set and no longer reflect the actual tx
+          ...(ordinalsFiltered
+            ? { feeNote: "fee metadata omitted — UTXO set was filtered for ordinals" }
+            : { fee: prepared.fee, feeRate: prepared.feeRate }),
           status: "broadcast",
           network: NETWORK,
           note: "sBTC will be credited to your Stacks address after Bitcoin confirmation.",
