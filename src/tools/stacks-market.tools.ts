@@ -724,31 +724,39 @@ Note: Stacks Market is only available on mainnet.`,
             "get-yes-balance",
             [uintCV(BigInt(market_id)), principalCV(walletAddress)],
             MARKET_CONTRACT_ADDRESS
-          ).catch(() => ({ okay: false, result: undefined, cause: "failed" })),
+          ),
           hiro.callReadOnlyFunction(
             MARKET_CONTRACT_ID,
             "get-no-balance",
             [uintCV(BigInt(market_id)), principalCV(walletAddress)],
             MARKET_CONTRACT_ADDRESS
-          ).catch(() => ({ okay: false, result: undefined, cause: "failed" })),
+          ),
         ]);
 
-        let yesBalance = 0;
-        let noBalance = 0;
-
-        if (yesRes.okay && yesRes.result) {
-          const hex = yesRes.result.startsWith("0x")
-            ? yesRes.result.slice(2)
-            : yesRes.result;
-          yesBalance = parseUintResult(cvToJSON(deserializeCV(Buffer.from(hex, "hex"))));
+        if (!yesRes.okay) {
+          throw new Error(
+            `Failed to fetch YES balance for market ${market_id}: ${yesRes.cause ?? "unknown error"}`
+          );
+        }
+        if (!noRes.okay) {
+          throw new Error(
+            `Failed to fetch NO balance for market ${market_id}: ${noRes.cause ?? "unknown error"}`
+          );
         }
 
-        if (noRes.okay && noRes.result) {
-          const hex = noRes.result.startsWith("0x")
-            ? noRes.result.slice(2)
-            : noRes.result;
-          noBalance = parseUintResult(cvToJSON(deserializeCV(Buffer.from(hex, "hex"))));
-        }
+        const yesBalance = yesRes.result
+          ? parseUintResult(cvToJSON(deserializeCV(Buffer.from(
+              yesRes.result.startsWith("0x") ? yesRes.result.slice(2) : yesRes.result,
+              "hex"
+            ))))
+          : 0;
+
+        const noBalance = noRes.result
+          ? parseUintResult(cvToJSON(deserializeCV(Buffer.from(
+              noRes.result.startsWith("0x") ? noRes.result.slice(2) : noRes.result,
+              "hex"
+            ))))
+          : 0;
 
         return createJsonResponse({
           network: NETWORK,
