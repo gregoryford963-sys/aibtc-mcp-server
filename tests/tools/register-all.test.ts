@@ -26,11 +26,11 @@ describe("registerAllTools", () => {
       version: "0.0.0",
     });
 
-    // Intercept registerTool to collect names before the SDK checks
-    const original = server.registerTool.bind(server);
-    server.registerTool = ((name: string, ...args: unknown[]) => {
+    // Replace registerTool with a stub that only records names.
+    // Calling the real method would throw on the first duplicate,
+    // hiding any subsequent collisions.
+    server.registerTool = ((name: string) => {
       registered.push(name);
-      return (original as Function)(name, ...args);
     }) as typeof server.registerTool;
 
     registerAllTools(server);
@@ -39,24 +39,7 @@ describe("registerAllTools", () => {
       (name, i) => registered.indexOf(name) !== i
     );
     expect(duplicates).toEqual([]);
-  });
-
-  it("registers at least 50 tools", () => {
-    let count = 0;
-    const server = new McpServer({
-      name: "test-server",
-      version: "0.0.0",
-    });
-
-    const original = server.registerTool.bind(server);
-    server.registerTool = ((name: string, ...args: unknown[]) => {
-      count++;
-      return (original as Function)(name, ...args);
-    }) as typeof server.registerTool;
-
-    registerAllTools(server);
-
-    // Sanity check: if this drops significantly, a register function is broken
-    expect(count).toBeGreaterThanOrEqual(50);
+    // Sanity check: ensure we actually collected tool names
+    expect(registered.length).toBeGreaterThanOrEqual(50);
   });
 });
