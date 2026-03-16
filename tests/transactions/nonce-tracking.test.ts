@@ -96,7 +96,7 @@ describe("stale nonce timeout", () => {
     expect(_testingNonceMaps.STALE_NONCE_MS).toBe(10 * 60 * 1000);
   });
 
-  it("should clear a stale timestamp when detected", function () {
+  it("should detect an entry older than STALE_NONCE_MS as stale", function () {
     // Simulate an entry that was last advanced beyond the stale window
     pendingNonces.set("SP_STALE", 42n);
     pendingNonceTimestamps.set(
@@ -104,9 +104,9 @@ describe("stale nonce timeout", () => {
       Date.now() - _testingNonceMaps.STALE_NONCE_MS - 1
     );
 
-    // Advancing with a nonce higher than current should still work
-    // (stale detection is in getNextNonce, but we can verify the Maps
-    //  reflect the state that getNextNonce would discard)
+    // Verify the timestamp math correctly identifies the entry as stale.
+    // Note: actual cleanup happens in getNextNonce (requires network),
+    // so this test only validates the staleness computation.
     const ts = pendingNonceTimestamps.get("SP_STALE")!;
     const isStale = Date.now() - ts > _testingNonceMaps.STALE_NONCE_MS;
     expect(isStale).toBe(true);
@@ -120,7 +120,7 @@ describe("stale nonce timeout", () => {
   });
 });
 
-describe("LRU-style size bound (MAX_NONCE_ENTRIES)", () => {
+describe("FIFO size bound (MAX_NONCE_ENTRIES)", () => {
   it("should expose MAX_NONCE_ENTRIES as 100", function () {
     expect(MAX_NONCE_ENTRIES).toBe(100);
   });
