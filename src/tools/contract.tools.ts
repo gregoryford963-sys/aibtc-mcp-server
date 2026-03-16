@@ -133,7 +133,7 @@ Post conditions constrain what assets the transaction can move. Each condition i
         fee: z
           .string()
           .optional()
-          .describe("Optional fee: 'low' | 'medium' | 'high' preset or micro-STX amount. If omitted, auto-estimated. Ignored when sponsored=true."),
+          .describe("Optional fee: 'low' | 'medium' | 'high' preset or micro-STX amount. Clamped to 50,000 uSTX max for contract calls. If omitted, medium-priority fee is auto-resolved. Ignored when sponsored=true."),
         sponsored: sponsoredSchema,
       },
     },
@@ -162,6 +162,7 @@ Post conditions constrain what assets the transaction can move. Each condition i
           // Sponsored: relay pays gas fees, so fee parameter is ignored
           result = await sponsoredContractCall(account, contractCallOptions, NETWORK);
         } else {
+          // resolveFee applies clamps; if fee is undefined the builder will auto-resolve medium.
           const resolvedFee = await resolveFee(fee, NETWORK, "contract_call");
           result = await callContract(account, {
             ...contractCallOptions,
@@ -196,7 +197,7 @@ Post conditions constrain what assets the transaction can move. Each condition i
         fee: z
           .string()
           .optional()
-          .describe("Optional fee: 'low' | 'medium' | 'high' preset or micro-STX amount. If omitted, auto-estimated. Ignored when sponsored=true."),
+          .describe("Optional fee: 'low' | 'medium' | 'high' preset or micro-STX amount. Clamped to 50,000 uSTX max for deployments. If omitted, medium-priority fee is auto-resolved. Ignored when sponsored=true."),
         sponsored: sponsoredSchema,
       },
     },

@@ -25,7 +25,7 @@ Example: To send 2 STX, use amount "2000000" (micro-STX).
         fee: z
           .string()
           .optional()
-          .describe("Optional fee: 'low' | 'medium' | 'high' preset or micro-STX amount. If omitted, auto-estimated. Ignored when sponsored=true."),
+          .describe("Optional fee: 'low' | 'medium' | 'high' preset or micro-STX amount. Clamped to 3,000 uSTX max for STX transfers. If omitted, medium-priority fee is auto-resolved. Ignored when sponsored=true."),
         sponsored: sponsoredSchema,
       },
     },
