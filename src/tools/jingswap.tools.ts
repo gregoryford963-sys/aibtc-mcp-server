@@ -496,6 +496,49 @@ export function registerJingswapTools(server: McpServer): void {
     }
   );
 
+  // ── Cancel Cycle ─────────────────────────────────────────────
+
+  server.registerTool(
+    "jingswap_cancel_cycle",
+    {
+      description:
+        "Cancel the current auction cycle if settlement has failed for too long. " +
+        "Can only be called 530 blocks (~17.5 min) after deposits were closed " +
+        "(BUFFER_BLOCKS 30 + CANCEL_THRESHOLD 500). " +
+        "Rolls all deposits into the next cycle — no refunds, users can withdraw " +
+        "individually during the next deposit phase. This is the safety valve.",
+    },
+    async () => {
+      try {
+        const data = await jingswapGet("/api/auction/cycle-state");
+        if (data.phase === 0) {
+          throw new Error("Cannot cancel cycle — auction is still in deposit phase");
+        }
+        const account = await getAccount();
+
+        const result = await callContract(account, {
+          contractAddress: JINGSWAP_CONTRACT_ADDRESS,
+          contractName: JINGSWAP_CONTRACT_NAME,
+          functionName: "cancel-cycle",
+          functionArgs: [],
+          postConditionMode: PostConditionMode.Allow,
+          postConditions: [],
+        });
+
+        return createJsonResponse({
+          success: true,
+          txid: result.txid,
+          action: "cancel-cycle",
+          cycle: data.currentCycle,
+          network: NETWORK,
+          explorerUrl: getExplorerTxUrl(result.txid, NETWORK),
+        });
+      } catch (error) {
+        return createErrorResponse(error);
+      }
+    }
+  );
+
   // ── Oracle Prices ────────────────────────────────────────────
 
   server.registerTool(
