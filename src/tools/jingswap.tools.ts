@@ -147,7 +147,15 @@ export function registerJingswapTools(server: McpServer): void {
     async ({ address }) => {
       try {
         const data = await jingswapGet(`/api/auction/activity/${address}`);
-        return createJsonResponse(data);
+        return createJsonResponse({
+          ...data,
+          _hint: {
+            "distribute-stx-depositor": "stxAmount = unswapped STX rolled to next cycle, sbtcAmount = sBTC received from swap",
+            "distribute-sbtc-depositor": "sbtcAmount = unswapped sats rolled to next cycle, stxAmount = STX received from swap",
+            "refund-stx": "deposit rejected (e.g. duplicate or below minimum)",
+            "refund-sbtc": "deposit rejected (e.g. duplicate or below minimum)",
+          },
+        });
       } catch (error) {
         return createErrorResponse(error);
       }
