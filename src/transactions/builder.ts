@@ -9,7 +9,113 @@ import {
 } from "@stacks/transactions";
 import { hexToBytes } from "@stacks/common";
 import { getStacksNetwork, getApiBaseUrl, type Network } from "../config/networks.js";
+import { getHiroApi } from "../services/hiro-api.js";
 import type { WalletAddresses } from "../utils/storage.js";
+
+// ---------------------------------------------------------------------------
+// Pending nonce tracking (fixes back-to-back tx nonce collision, issue #326)
+// ---------------------------------------------------------------------------
+
+/**
+ * How long a locally-tracked pending nonce is considered fresh.
+ * If no new transaction has been broadcast within this window the counter is
+ * stale (the tx likely confirmed or was dropped) and we fall back to the
+ * network value on the next call.
+ */
+const STALE_NONCE_MS = 10 * 60 * 1000; // 10 minutes
+
+/**
+ * In-memory map of STX address -> next expected nonce for non-sponsored txs.
+ * Updated after each successful broadcast so sequential calls don't re-use
+ * the same network nonce before the first tx lands in the mempool.
+ */
+const pendingNonces = new Map<string, bigint>();
+
+/**
+ * Tracks when each address last advanced its local nonce counter.
+ * Used to detect stale entries: if no transaction was sent within STALE_NONCE_MS
+ * the counter is expired and the network value is authoritative again.
+ */
+const pendingNonceTimestamps = new Map<string, number>();
+
+/**
+ * Reset the pending nonce for an address (called on wallet unlock/lock/switch
+ * so the counter re-syncs with the chain on the next transaction).
+ */
+export function resetPendingNonce(address: string): void {
+  pendingNonces.delete(address);
+  pendingNonceTimestamps.delete(address);
+}
+
+/**
+ * Force-resync the local pending nonce for an address.
+ * Identical to resetPendingNonce but exported under a name that makes the
+ * intent clear for the recover_sponsor_nonce tool's resync-local-nonce action.
+ */
+export function forceResyncNonce(address: string): void {
+  resetPendingNonce(address);
+}
+
+/**
+ * Fetch the next nonce to use for `address`.
+ *
+ * Algorithm:
+ * 1. Fetch `possible_next_nonce` and `detected_missing_nonces` from Hiro.
+ * 2. If the local counter exists but is older than STALE_NONCE_MS, discard it
+ *    so a stale counter never permanently blocks a recovered wallet.
+ * 3. Return max(possible_next_nonce, local_pending) so rapid sequential calls
+ *    get strictly increasing nonces even before the mempool reflects the first tx.
+ * 4. Warn if the network reports missing nonces — gaps below the pending counter
+ *    can cause the queue to stall until the gaps are filled.
+ */
+async function getNextNonce(address: string, network: Network): Promise<bigint> {
+  // Stale-timeout: discard local counter if it hasn't been refreshed recently.
+  const lastAdvanced = pendingNonceTimestamps.get(address);
+  const isStale = lastAdvanced !== undefined && Date.now() - lastAdvanced > STALE_NONCE_MS;
+  if (isStale) {
+    pendingNonces.delete(address);
+    pendingNonceTimestamps.delete(address);
+  }
+
+  const pending = pendingNonces.get(address) ?? 0n;
+
+  try {
+    const hiroApi = getHiroApi(network);
+    const nonceInfo = await hiroApi.getNonceInfo(address);
+    const networkNext = BigInt(nonceInfo.possible_next_nonce);
+
+    // Warn about detected nonce gaps that could stall the queue.
+    if (nonceInfo.detected_missing_nonces && nonceInfo.detected_missing_nonces.length > 0) {
+      console.warn(
+        `[nonce] detected_missing_nonces for ${address}: [${nonceInfo.detected_missing_nonces.join(", ")}]. ` +
+        `These gaps may stall pending transactions. Use recover_sponsor_nonce with action=fill-gaps to resolve.`
+      );
+    }
+
+    return networkNext > pending ? networkNext : pending;
+  } catch (err) {
+    // Fallback: if we have a fresh local counter, use it to keep the queue moving
+    // even when Hiro is temporarily unreachable (e.g., between rapid sequential calls).
+    if (pending > 0n) {
+      console.warn(`[nonce] API call failed, using local pending counter (${pending}) for ${address}:`, err);
+      return pending;
+    }
+    throw err;
+  }
+}
+
+/**
+ * Record that a transaction with `nonce` was successfully broadcast for
+ * `address`, so the next call advances past it.
+ */
+function advancePendingNonce(address: string, nonce: bigint): void {
+  const next = nonce + 1n;
+  const current = pendingNonces.get(address) ?? 0n;
+  if (next > current) {
+    pendingNonces.set(address, next);
+    pendingNonceTimestamps.set(address, Date.now());
+  }
+}
 
 export interface Account extends WalletAddresses {
   privateKey: string;
@@ -81,6 +187,7 @@ export async function transferStx(
   fee?: bigint
 ): Promise<TransferResult> {
   const networkName = getStacksNetwork(account.network);
+  const nonce = await getNextNonce(account.address, account.network);
 
   const transaction = await makeSTXTokenTransfer({
     recipient,
@@ -88,6 +195,7 @@ export async function transferStx(
     senderKey: account.privateKey,
     network: networkName,
     memo: memo || "",
+    nonce,
     ...(fee !== undefined && { fee }),
   });
 
@@ -101,6 +209,8 @@ export async function transferStx(
       `Broadcast failed: ${broadcastResponse.error} - ${broadcastResponse.reason}`
     );
   }
+
+  advancePendingNonce(account.address, nonce);
 
   return {
     txid: broadcastResponse.txid,
@@ -116,6 +226,7 @@ export async function callContract(
   options: ContractCallOptions
 ): Promise<TransferResult> {
   const networkName = getStacksNetwork(account.network);
+  const nonce = await getNextNonce(account.address, account.network);
 
   const transaction = await makeContractCall({
     contractAddress: options.contractAddress,
@@ -124,6 +235,7 @@ export async function callContract(
     functionArgs: options.functionArgs,
     senderKey: account.privateKey,
     network: networkName,
+    nonce,
     postConditionMode: options.postConditionMode || PostConditionMode.Deny,
     postConditions: options.postConditions || [],
     ...(options.fee !== undefined && { fee: options.fee }),
@@ -140,6 +252,8 @@ export async function callContract(
     );
   }
 
+  advancePendingNonce(account.address, nonce);
+
   return {
     txid: broadcastResponse.txid,
     rawTx: transaction.serialize(),
@@ -154,12 +268,14 @@ export async function deployContract(
   options: ContractDeployOptions
 ): Promise<TransferResult> {
   const networkName = getStacksNetwork(account.network);
+  const nonce = await getNextNonce(account.address, account.network);
 
   const transaction = await makeContractDeploy({
     contractName: options.contractName,
     codeBody: options.codeBody,
     senderKey: account.privateKey,
     network: networkName,
+    nonce,
     ...(options.fee !== undefined && { fee: options.fee }),
   });
 
@@ -173,6 +289,8 @@ export async function deployContract(
       `Broadcast failed: ${broadcastResponse.error} - ${broadcastResponse.reason}`
     );
   }
+
+  advancePendingNonce(account.address, nonce);
 
   return {
     txid: broadcastResponse.txid,
