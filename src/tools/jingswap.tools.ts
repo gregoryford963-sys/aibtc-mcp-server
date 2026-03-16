@@ -8,9 +8,15 @@ import { createJsonResponse, createErrorResponse } from "../utils/index.js";
 
 const JINGSWAP_API =
   process.env.JINGSWAP_API_URL || "https://faktory-dao-backend.vercel.app";
+// Public default key: rate-limited per IP on the backend, same model as Hiro's public API tier.
+// Set JINGSWAP_API_KEY env var for higher limits.
+const JINGSWAP_API_KEY =
+  process.env.JINGSWAP_API_KEY || "jc_b058d7f2e0976bd4ee34be3e5c7ba7ebe45289c55d3f5e45f666ebc14b7ebfd0";
 
 async function jingswapGet(path: string): Promise<any> {
-  const res = await fetch(`${JINGSWAP_API}${path}`);
+  const res = await fetch(`${JINGSWAP_API}${path}`, {
+    headers: { "x-api-key": JINGSWAP_API_KEY },
+  });
   if (!res.ok) throw new Error(`Jingswap API ${res.status}: ${await res.text()}`);
   const json = await res.json();
   if (!json.success) throw new Error(json.message || "API returned failure");
