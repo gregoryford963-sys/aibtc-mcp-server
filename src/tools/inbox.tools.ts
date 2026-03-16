@@ -261,6 +261,14 @@ Use this instead of execute_x402_endpoint for inbox messages — the generic too
     },
     async ({ recipientBtcAddress, recipientStxAddress, content, paymentTxid }) => {
       try {
+        // Network mismatch guard: fail early if testnet MCP server targets mainnet inbox
+        if (NETWORK === "testnet" && INBOX_BASE.includes("aibtc.com")) {
+          throw new Error(
+            "Network mismatch: MCP server is configured for testnet but the inbox service at aibtc.com requires mainnet. " +
+            "Set NETWORK=mainnet or use a testnet inbox endpoint."
+          );
+        }
+
         const account = await getAccount();
 
         // Manual recovery: skip x402 flow and POST with the provided txid as proof
