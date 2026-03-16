@@ -19,6 +19,9 @@ import type { Filter } from "nostr-tools/filter";
 
 const DEFAULT_RELAYS = ["wss://relay.damus.io", "wss://nos.lol"];
 const WS_TIMEOUT_MS = 10_000;
+// Query needs more time than publish: relays must return EOSE after all matching
+// events are sent, which is slower than a single publish acknowledgement.
+const QUERY_TIMEOUT_MS = WS_TIMEOUT_MS * 2;
 
 // ---------------------------------------------------------------------------
 // Helper functions
@@ -42,14 +45,20 @@ function deriveNostrKeys(): { sk: Uint8Array; pubkey: string; npub: string } {
 function resolveHexPubkey(input: string): string {
   if (input.startsWith("npub")) {
     const decoded = nip19.decode(input);
-    return decoded.data as string;
+    if (decoded.type !== "npub") {
+      throw new Error(`Expected npub bech32 format, got ${decoded.type}`);
+    }
+    return decoded.data;
   }
   return input;
 }
 
 function createPool(): SimplePool {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  (globalThis as any).WebSocket = WebSocket;
+  // Node.js does not have native WebSocket; polyfill with 'ws'.
+  // Bun exposes globalThis.WebSocket natively so the assignment is skipped there.
+  if (typeof globalThis.WebSocket === "undefined") {
+    (globalThis as unknown as { WebSocket: typeof WebSocket }).WebSocket = WebSocket;
+  }
   return new SimplePool();
 }
 
@@ -88,7 +97,7 @@ async function queryRelays(
     new Promise<VerifiedEvent[]>((_, reject) =>
       setTimeout(
         () => reject(new Error("query timeout")),
-        WS_TIMEOUT_MS * 2
+        QUERY_TIMEOUT_MS
       )
     ),
   ]);
@@ -171,17 +180,19 @@ export function registerNostrTools(server: McpServer): void {
 
         const event = finalizeEvent(template, sk);
         const pool = createPool();
-        const publishResults = await publishToRelays(pool, event, targetRelays);
-        pool.close(targetRelays);
-
-        return createJsonResponse({
-          eventId: event.id,
-          pubkey: event.pubkey,
-          createdAt: event.created_at,
-          content: event.content,
-          tags: event.tags,
-          relays: publishResults,
-        });
+        try {
+          const publishResults = await publishToRelays(pool, event, targetRelays);
+          return createJsonResponse({
+            eventId: event.id,
+            pubkey: event.pubkey,
+            createdAt: event.created_at,
+            content: event.content,
+            tags: event.tags,
+            relays: publishResults,
+          });
+        } finally {
+          pool.close(targetRelays);
+        }
       } catch (error) {
         return createErrorResponse(error);
       }
@@ -231,26 +242,27 @@ export function registerNostrTools(server: McpServer): void {
           filter.authors = [resolveHexPubkey(pubkey)];
         }
 
-        const events = await queryRelays(pool, targetRelays, filter);
-        pool.close(targetRelays);
-
-        // Sort descending by created_at
-        const sorted = events
-          .sort((a, b) => b.created_at - a.created_at)
-          .slice(0, queryLimit)
-          .map((e) => ({
-            id: e.id,
-            pubkey: e.pubkey,
-            npub: nip19.npubEncode(e.pubkey),
-            createdAt: e.created_at,
-            content: e.content,
-            tags: e.tags,
-          }));
-
-        return createJsonResponse({
-          count: sorted.length,
-          events: sorted,
-        });
+        try {
+          const events = await queryRelays(pool, targetRelays, filter);
+          // Sort descending by created_at
+          const sorted = events
+            .sort((a, b) => b.created_at - a.created_at)
+            .slice(0, queryLimit)
+            .map((e) => ({
+              id: e.id,
+              pubkey: e.pubkey,
+              npub: nip19.npubEncode(e.pubkey),
+              createdAt: e.created_at,
+              content: e.content,
+              tags: e.tags,
+            }));
+          return createJsonResponse({
+            count: sorted.length,
+            events: sorted,
+          });
+        } finally {
+          pool.close(targetRelays);
+        }
       } catch (error) {
         return createErrorResponse(error);
       }
@@ -303,26 +315,27 @@ export function registerNostrTools(server: McpServer): void {
           limit: queryLimit,
         };
 
-        const events = await queryRelays(pool, targetRelays, filter);
-        pool.close(targetRelays);
-
-        const sorted = events
-          .sort((a, b) => b.created_at - a.created_at)
-          .slice(0, queryLimit)
-          .map((e) => ({
-            id: e.id,
-            pubkey: e.pubkey,
-            npub: nip19.npubEncode(e.pubkey),
-            createdAt: e.created_at,
-            content: e.content,
-            tags: e.tags,
-          }));
-
-        return createJsonResponse({
-          searchTags: tagList,
-          count: sorted.length,
-          events: sorted,
-        });
+        try {
+          const events = await queryRelays(pool, targetRelays, filter);
+          const sorted = events
+            .sort((a, b) => b.created_at - a.created_at)
+            .slice(0, queryLimit)
+            .map((e) => ({
+              id: e.id,
+              pubkey: e.pubkey,
+              npub: nip19.npubEncode(e.pubkey),
+              createdAt: e.created_at,
+              content: e.content,
+              tags: e.tags,
+            }));
+          return createJsonResponse({
+            searchTags: tagList,
+            count: sorted.length,
+            events: sorted,
+          });
+        } finally {
+          pool.close(targetRelays);
+        }
       } catch (error) {
         return createErrorResponse(error);
       }
@@ -361,35 +374,38 @@ export function registerNostrTools(server: McpServer): void {
           limit: 1,
         };
 
-        const events = await queryRelays(pool, targetRelays, filter);
-        pool.close(targetRelays);
+        try {
+          const events = await queryRelays(pool, targetRelays, filter);
 
-        if (events.length === 0) {
+          if (events.length === 0) {
+            return createJsonResponse({
+              pubkey: hexPubkey,
+              npub: nip19.npubEncode(hexPubkey),
+              found: false,
+              profile: null,
+            });
+          }
+
+          // Use most recent kind:0 event
+          const latest = events.sort((a, b) => b.created_at - a.created_at)[0];
+          let profile: Record<string, unknown> = {};
+          try {
+            profile = JSON.parse(latest.content) as Record<string, unknown>;
+          } catch {
+            // content was not valid JSON — return as-is
+            profile = { raw: latest.content };
+          }
+
           return createJsonResponse({
             pubkey: hexPubkey,
             npub: nip19.npubEncode(hexPubkey),
-            found: false,
-            profile: null,
+            found: true,
+            updatedAt: latest.created_at,
+            profile,
           });
+        } finally {
+          pool.close(targetRelays);
         }
-
-        // Use most recent kind:0 event
-        const latest = events.sort((a, b) => b.created_at - a.created_at)[0];
-        let profile: Record<string, unknown> = {};
-        try {
-          profile = JSON.parse(latest.content) as Record<string, unknown>;
-        } catch {
-          // content was not valid JSON — return as-is
-          profile = { raw: latest.content };
-        }
-
-        return createJsonResponse({
-          pubkey: hexPubkey,
-          npub: nip19.npubEncode(hexPubkey),
-          found: true,
-          updatedAt: latest.created_at,
-          profile,
-        });
       } catch (error) {
         return createErrorResponse(error);
       }
@@ -430,50 +446,53 @@ export function registerNostrTools(server: McpServer): void {
         const targetRelays = relays && relays.length > 0 ? relays : DEFAULT_RELAYS;
         const pool = createPool();
 
-        // Fetch existing profile to preserve fields
-        let existingProfile: Record<string, unknown> = {};
         try {
-          const existing = await queryRelays(pool, targetRelays, {
-            kinds: [0],
-            authors: [pubkey],
-            limit: 1,
-          });
-          if (existing.length > 0) {
-            const latest = existing.sort((a, b) => b.created_at - a.created_at)[0];
-            existingProfile = JSON.parse(latest.content) as Record<string, unknown>;
+          // Fetch existing profile to preserve fields
+          let existingProfile: Record<string, unknown> = {};
+          try {
+            const existing = await queryRelays(pool, targetRelays, {
+              kinds: [0],
+              authors: [pubkey],
+              limit: 1,
+            });
+            if (existing.length > 0) {
+              const latest = existing.sort((a, b) => b.created_at - a.created_at)[0];
+              existingProfile = JSON.parse(latest.content) as Record<string, unknown>;
+            }
+          } catch {
+            // Ignore fetch errors — publish with just the new fields
           }
-        } catch {
-          // Ignore fetch errors — publish with just the new fields
+
+          // Merge: only override fields that were explicitly provided
+          const updates: Record<string, unknown> = {};
+          if (name !== undefined) updates.name = name;
+          if (about !== undefined) updates.about = about;
+          if (picture !== undefined) updates.picture = picture;
+          if (website !== undefined) updates.website = website;
+          if (nip05 !== undefined) updates.nip05 = nip05;
+
+          const mergedProfile = { ...existingProfile, ...updates };
+
+          const template: EventTemplate = {
+            kind: 0,
+            created_at: Math.floor(Date.now() / 1000),
+            tags: [],
+            content: JSON.stringify(mergedProfile),
+          };
+
+          const event = finalizeEvent(template, sk);
+          const publishResults = await publishToRelays(pool, event, targetRelays);
+
+          return createJsonResponse({
+            eventId: event.id,
+            pubkey: event.pubkey,
+            createdAt: event.created_at,
+            profile: mergedProfile,
+            relays: publishResults,
+          });
+        } finally {
+          pool.close(targetRelays);
         }
-
-        // Merge: only override fields that were explicitly provided
-        const updates: Record<string, unknown> = {};
-        if (name !== undefined) updates.name = name;
-        if (about !== undefined) updates.about = about;
-        if (picture !== undefined) updates.picture = picture;
-        if (website !== undefined) updates.website = website;
-        if (nip05 !== undefined) updates.nip05 = nip05;
-
-        const mergedProfile = { ...existingProfile, ...updates };
-
-        const template: EventTemplate = {
-          kind: 0,
-          created_at: Math.floor(Date.now() / 1000),
-          tags: [],
-          content: JSON.stringify(mergedProfile),
-        };
-
-        const event = finalizeEvent(template, sk);
-        const publishResults = await publishToRelays(pool, event, targetRelays);
-        pool.close(targetRelays);
-
-        return createJsonResponse({
-          eventId: event.id,
-          pubkey: event.pubkey,
-          createdAt: event.created_at,
-          profile: mergedProfile,
-          relays: publishResults,
-        });
       } catch (error) {
         return createErrorResponse(error);
       }
