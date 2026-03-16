@@ -353,9 +353,10 @@ export function registerJingswapTools(server: McpServer): void {
     {
       description:
         "Close the deposit phase of the current Jingswap auction cycle. " +
-        "Anyone can call this after the minimum deposit blocks have elapsed " +
-        "and both sides have met minimum deposit requirements (min 1 STX and min 1,000 sats). " +
-        "Transitions the auction from deposit phase to buffer phase.",
+        "Before calling, check jingswap_get_cycle_state to verify: phase is 0 (deposit), " +
+        "blocksElapsed >= 150 (DEPOSIT_MIN_BLOCKS), and both sides meet minimums " +
+        "(min 1 STX = 1,000,000 micro-STX and min 1,000 sats sBTC). " +
+        "Anyone can call this. Transitions to buffer phase.",
     },
     async () => {
       try {
@@ -395,7 +396,8 @@ export function registerJingswapTools(server: McpServer): void {
     {
       description:
         "Settle the current auction cycle using stored Pyth oracle prices (free). " +
-        "Try this first. If it fails because prices are stale, use jingswap_settle_with_refresh instead. " +
+        "WARNING: This will almost always fail because stored prices go stale quickly. " +
+        "Prefer jingswap_settle_with_refresh instead — it fetches fresh prices and is much more reliable. " +
         "Only works after deposits have been closed (buffer/settle phase).",
     },
     async () => {
@@ -442,9 +444,11 @@ export function registerJingswapTools(server: McpServer): void {
     {
       description:
         "Settle the current auction cycle by first refreshing Pyth oracle prices with fresh VAAs. " +
-        "Costs ~2 µSTX for the Pyth update. Use this when jingswap_settle fails due to stale prices. " +
-        "Automatically fetches fresh VAAs from the backend. " +
-        "Only works after deposits have been closed (buffer/settle phase).",
+        "This is the recommended settlement method — stored prices are almost always stale. " +
+        "Costs ~2 µSTX for the Pyth update. Automatically fetches fresh VAAs from the backend. " +
+        "Settlement distributes funds to all depositors so post conditions are in Allow mode. " +
+        "There is no guarantee settlement succeeds (e.g. if oracle update fails), but this is " +
+        "the most reliable path. Only works after deposits have been closed (buffer/settle phase).",
     },
     async () => {
       try {
