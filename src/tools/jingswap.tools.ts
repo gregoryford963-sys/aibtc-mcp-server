@@ -44,7 +44,10 @@ export function registerJingswapTools(server: McpServer): void {
         return createJsonResponse({
           ...data,
           _hint: {
-            phases: "0=deposit, 1=buffer, 2=settle",
+            phases: "0=deposit (open for deposits, min 150 blocks), 1=buffer (30 blocks ~1 min, no actions), 2=settle (call settle-with-refresh)",
+            blockTime: "Stacks blocks average ~2 seconds each (Nakamoto)",
+            depositMinBlocks: "150 blocks (~5 minutes) before deposits can be closed",
+            bufferBlocks: "30 blocks (~1 minute) after close before settlement is possible",
             stxUnits: "micro-STX (÷1e6 for STX)",
             sbtcUnits: "satoshis (÷1e8 for sBTC)",
           },
