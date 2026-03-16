@@ -26,9 +26,32 @@ import type { WalletAddresses } from "../utils/storage.js";
 const STALE_NONCE_MS = 10 * 60 * 1000; // 10 minutes
 
 /**
+ * Maximum number of addresses tracked simultaneously in pendingNonces and
+ * pendingNonceTimestamps. When this limit is reached the oldest entry (by
+ * insertion order) is evicted before a new one is added. This prevents
+ * unbounded memory growth in long-running server processes (issue #336).
+ */
+export const MAX_NONCE_ENTRIES = 100;
+
+/**
+ * Evict the oldest entry from a Map when it has reached MAX_NONCE_ENTRIES.
+ * JS Maps iterate in insertion order, so map.keys().next() yields the oldest
+ * key — no additional bookkeeping is needed.
+ */
+function evictOldestIfFull<K, V>(map: Map<K, V>): void {
+  if (map.size >= MAX_NONCE_ENTRIES) {
+    const oldestKey = map.keys().next().value;
+    if (oldestKey !== undefined) {
+      map.delete(oldestKey);
+    }
+  }
+}
+
+/**
  * In-memory map of STX address -> next expected nonce for non-sponsored txs.
  * Updated after each successful broadcast so sequential calls don't re-use
  * the same network nonce before the first tx lands in the mempool.
+ * Bounded to MAX_NONCE_ENTRIES entries; oldest evicted on overflow (issue #336).
  */
 const pendingNonces = new Map<string, bigint>();
 
@@ -36,8 +59,19 @@ const pendingNonces = new Map<string, bigint>();
  * Tracks when each address last advanced its local nonce counter.
  * Used to detect stale entries: if no transaction was sent within STALE_NONCE_MS
  * the counter is expired and the network value is authoritative again.
+ * Bounded to MAX_NONCE_ENTRIES entries; oldest evicted on overflow (issue #336).
  */
 const pendingNonceTimestamps = new Map<string, number>();
+
+/**
+ * Exported references to the internal nonce Maps for unit testing only.
+ * Do not use these outside of test files.
+ */
+export const _testingNonceMaps = {
+  pendingNonces,
+  pendingNonceTimestamps,
+  STALE_NONCE_MS,
+};
 
 /**
  * Reset the pending nonce for an address (called on wallet unlock/lock/switch
@@ -108,11 +142,20 @@ async function getNextNonce(address: string, network: Network): Promise<bigint> 
 /**
  * Record that a transaction with `nonce` was successfully broadcast for
  * `address`, so the next call advances past it.
+ *
+ * Exported for unit testing. Not part of the public API.
  */
-function advancePendingNonce(address: string, nonce: bigint): void {
+export function advancePendingNonce(address: string, nonce: bigint): void {
   const next = nonce + 1n;
   const current = pendingNonces.get(address) ?? 0n;
   if (next > current) {
+    // Evict oldest entry before inserting a new address to keep maps bounded.
+    // Only evict when this is a new address — updates to existing keys don't
+    // change Map size so no eviction is needed.
+    if (!pendingNonces.has(address)) {
+      evictOldestIfFull(pendingNonces);
+      evictOldestIfFull(pendingNonceTimestamps);
+    }
     pendingNonces.set(address, next);
     pendingNonceTimestamps.set(address, Date.now());
   }
