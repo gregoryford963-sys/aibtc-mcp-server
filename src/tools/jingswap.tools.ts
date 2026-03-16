@@ -362,21 +362,28 @@ export function registerJingswapTools(server: McpServer): void {
           jingswapGet("/api/auction/pyth-prices"),
           jingswapGet("/api/auction/dex-price"),
         ]);
-        // Compute human-readable STX/BTC price from XYK pool balances
+        // Compute human-readable STX/BTC prices
         const xykStxPerBtc =
           dex.xykBalances && dex.xykBalances.xBalance > 0
             ? (dex.xykBalances.yBalance / dex.xykBalances.xBalance / 1e6) * 1e8
+            : null;
+        // dlmmPrice is fixed-point: multiply by 1e-10 to get STX/BTC ratio, then invert
+        const dlmmStxPerBtc =
+          dex.dlmmPrice && dex.dlmmPrice > 0
+            ? Math.round((1 / (dex.dlmmPrice * 1e-10)) * 100) / 100
             : null;
         return createJsonResponse({
           pyth,
           dex: {
             ...dex,
             xykStxPerBtc: xykStxPerBtc ? Math.round(xykStxPerBtc * 100) / 100 : null,
+            dlmmStxPerBtc,
           },
           _hint: {
-            xykStxPerBtc: "Human-readable STX per BTC from XYK pool",
+            xykStxPerBtc: "STX per BTC from XYK pool",
+            dlmmStxPerBtc: "STX per BTC from DLMM pool",
             xykPrice: "Raw contract value — use xykStxPerBtc instead",
-            dlmmPrice: "DLMM price — may be 0 or stale if pool inactive",
+            dlmmPrice: "Raw fixed-point (×1e-10 = STX/BTC ratio) — use dlmmStxPerBtc instead",
             xBalance: "sBTC in sats (÷1e8 for BTC)",
             yBalance: "STX in micro-STX (÷1e6 for STX)",
           },
