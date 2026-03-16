@@ -5,12 +5,12 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { createJsonResponse, createErrorResponse } from "../utils/index.js";
-import { PILLAR_API_URL, PILLAR_API_KEY } from "../config/pillar.js";
+
+const JINGSWAP_API =
+  process.env.JINGSWAP_API_URL || "https://faktory-dao-backend.vercel.app";
 
 async function jingswapGet(path: string): Promise<any> {
-  const res = await fetch(`${PILLAR_API_URL}${path}`, {
-    headers: { "x-api-key": PILLAR_API_KEY },
-  });
+  const res = await fetch(`${JINGSWAP_API}${path}`);
   if (!res.ok) throw new Error(`Jingswap API ${res.status}: ${await res.text()}`);
   const json = await res.json();
   if (!json.success) throw new Error(json.message || "API returned failure");
