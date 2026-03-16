@@ -4,7 +4,7 @@
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { uintCV, PostConditionMode, Pc } from "@stacks/transactions";
+import { uintCV, bufferCV, contractPrincipalCV, PostConditionMode, Pc } from "@stacks/transactions";
 import { getAccount, NETWORK } from "../services/x402.service.js";
 import { callContract } from "../transactions/builder.js";
 import { getExplorerTxUrl } from "../config/networks.js";
@@ -337,6 +337,149 @@ export function registerJingswapTools(server: McpServer): void {
           success: true,
           txid: result.txid,
           action: "cancel-sbtc-deposit",
+          network: NETWORK,
+          explorerUrl: getExplorerTxUrl(result.txid, NETWORK),
+        });
+      } catch (error) {
+        return createErrorResponse(error);
+      }
+    }
+  );
+
+  // ── Close Deposits ───────────────────────────────────────────
+
+  server.registerTool(
+    "jingswap_close_deposits",
+    {
+      description:
+        "Close the deposit phase of the current Jingswap auction cycle. " +
+        "Anyone can call this after the minimum deposit blocks have elapsed " +
+        "and both sides have met minimum deposit requirements (min 1 STX and min 1,000 sats). " +
+        "Transitions the auction from deposit phase to buffer phase.",
+    },
+    async () => {
+      try {
+        const data = await jingswapGet("/api/auction/cycle-state");
+        if (data.phase !== 0) {
+          throw new Error("Cannot close deposits — auction is not in deposit phase");
+        }
+        const account = await getAccount();
+
+        const result = await callContract(account, {
+          contractAddress: JINGSWAP_CONTRACT_ADDRESS,
+          contractName: JINGSWAP_CONTRACT_NAME,
+          functionName: "close-deposits",
+          functionArgs: [],
+          postConditionMode: PostConditionMode.Allow,
+          postConditions: [],
+        });
+
+        return createJsonResponse({
+          success: true,
+          txid: result.txid,
+          action: "close-deposits",
+          cycle: data.currentCycle,
+          network: NETWORK,
+          explorerUrl: getExplorerTxUrl(result.txid, NETWORK),
+        });
+      } catch (error) {
+        return createErrorResponse(error);
+      }
+    }
+  );
+
+  // ── Settle (stored prices) ──────────────────────────────────
+
+  server.registerTool(
+    "jingswap_settle",
+    {
+      description:
+        "Settle the current auction cycle using stored Pyth oracle prices (free). " +
+        "Try this first. If it fails because prices are stale, use jingswap_settle_with_refresh instead. " +
+        "Only works after deposits have been closed (buffer/settle phase).",
+    },
+    async () => {
+      try {
+        const data = await jingswapGet("/api/auction/cycle-state");
+        if (data.phase === 0) {
+          throw new Error("Cannot settle — auction is still in deposit phase. Close deposits first.");
+        }
+        const account = await getAccount();
+
+        const result = await callContract(account, {
+          contractAddress: JINGSWAP_CONTRACT_ADDRESS,
+          contractName: JINGSWAP_CONTRACT_NAME,
+          functionName: "settle",
+          functionArgs: [],
+          postConditionMode: PostConditionMode.Allow,
+          postConditions: [],
+        });
+
+        return createJsonResponse({
+          success: true,
+          txid: result.txid,
+          action: "settle",
+          cycle: data.currentCycle,
+          network: NETWORK,
+          explorerUrl: getExplorerTxUrl(result.txid, NETWORK),
+        });
+      } catch (error) {
+        return createErrorResponse(error);
+      }
+    }
+  );
+
+  // ── Settle with Refresh (fresh Pyth VAAs) ───────────────────
+
+  const PYTH_CONTRACTS = {
+    storage: { address: "SP1CGXWEAMG6P6FT04W66NVGJ7PQWMDAC19R7PJ0Y", name: "pyth-storage-v4" },
+    decoder: { address: "SP1CGXWEAMG6P6FT04W66NVGJ7PQWMDAC19R7PJ0Y", name: "pyth-pnau-decoder-v3" },
+    wormhole: { address: "SP1CGXWEAMG6P6FT04W66NVGJ7PQWMDAC19R7PJ0Y", name: "wormhole-core-v2" },
+  };
+
+  server.registerTool(
+    "jingswap_settle_with_refresh",
+    {
+      description:
+        "Settle the current auction cycle by first refreshing Pyth oracle prices with fresh VAAs. " +
+        "Costs ~2 µSTX for the Pyth update. Use this when jingswap_settle fails due to stale prices. " +
+        "Automatically fetches fresh VAAs from the backend. " +
+        "Only works after deposits have been closed (buffer/settle phase).",
+    },
+    async () => {
+      try {
+        const data = await jingswapGet("/api/auction/cycle-state");
+        if (data.phase === 0) {
+          throw new Error("Cannot settle — auction is still in deposit phase. Close deposits first.");
+        }
+
+        // Fetch fresh Pyth VAAs from backend
+        const vaas = await jingswapGet("/api/auction/pyth-vaas");
+        const btcVaaBuffer = bufferCV(Buffer.from(vaas.btcVaaHex, "hex"));
+        const stxVaaBuffer = bufferCV(Buffer.from(vaas.stxVaaHex, "hex"));
+
+        const account = await getAccount();
+
+        const result = await callContract(account, {
+          contractAddress: JINGSWAP_CONTRACT_ADDRESS,
+          contractName: JINGSWAP_CONTRACT_NAME,
+          functionName: "settle-with-refresh",
+          functionArgs: [
+            btcVaaBuffer,
+            stxVaaBuffer,
+            contractPrincipalCV(PYTH_CONTRACTS.storage.address, PYTH_CONTRACTS.storage.name),
+            contractPrincipalCV(PYTH_CONTRACTS.decoder.address, PYTH_CONTRACTS.decoder.name),
+            contractPrincipalCV(PYTH_CONTRACTS.wormhole.address, PYTH_CONTRACTS.wormhole.name),
+          ],
+          postConditionMode: PostConditionMode.Allow,
+          postConditions: [],
+        });
+
+        return createJsonResponse({
+          success: true,
+          txid: result.txid,
+          action: "settle-with-refresh",
+          cycle: data.currentCycle,
           network: NETWORK,
           explorerUrl: getExplorerTxUrl(result.txid, NETWORK),
         });
