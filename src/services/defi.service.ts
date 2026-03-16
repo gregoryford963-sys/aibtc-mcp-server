@@ -7,12 +7,9 @@ import {
   PostConditionMode,
   Pc,
   principalCV,
-  broadcastTransaction,
-  makeContractCall,
   noneCV,
   someCV,
 } from "@stacks/transactions";
-import { STACKS_MAINNET } from "@stacks/network";
 import { AlexSDK, Currency, type TokenInfo } from "alex-sdk";
 import { HiroApiService, getHiroApi } from "./hiro-api.js";
 import {
@@ -25,7 +22,7 @@ import {
   ZEST_V2_MARKET_VAULT,
   type ZestAssetConfig,
 } from "../config/index.js";
-import { callContract, type Account, type TransferResult } from "../transactions/builder.js";
+import { callContract, type Account, type TransferResult, type ContractCallOptions } from "../transactions/builder.js";
 
 // ============================================================================
 // Types
@@ -200,31 +197,17 @@ export class AlexDexService {
       minAmountOut
     );
 
-    // Use makeContractCall to build and sign the transaction
-    const transaction = await makeContractCall({
+    // Use callContract from builder so nonce tracking and fee clamping apply automatically.
+    const callOptions: ContractCallOptions = {
       contractAddress: txParams.contractAddress,
       contractName: txParams.contractName,
       functionName: txParams.functionName,
       functionArgs: txParams.functionArgs,
       postConditions: txParams.postConditions,
-      senderKey: account.privateKey,
-      network: STACKS_MAINNET,
       postConditionMode: PostConditionMode.Deny,
-    });
-
-    const broadcastResult = await broadcastTransaction({
-      transaction,
-      network: STACKS_MAINNET
-    });
-
-    if ("error" in broadcastResult) {
-      throw new Error(`Broadcast failed: ${broadcastResult.error} - ${broadcastResult.reason}`);
-    }
-
-    return {
-      txid: broadcastResult.txid,
-      rawTx: transaction.serialize(),
     };
+
+    return callContract(account, callOptions);
   }
 
   /**

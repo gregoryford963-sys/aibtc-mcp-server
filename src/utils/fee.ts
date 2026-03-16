@@ -12,12 +12,18 @@ import type { Network } from "../config/networks.js";
 /**
  * Fee floor and ceiling clamps by transaction type (in micro-STX).
  * Prevents absurd fees during mempool spikes while allowing reasonable variation.
+ *
+ * Ceilings are set conservatively:
+ *   token_transfer: 3,000 uSTX (0.003 STX) — simple transfer
+ *   contract_call:  50,000 uSTX (0.05 STX)  — complex contract call
+ *   smart_contract: 50,000 uSTX (0.05 STX)  — deployment
+ * These match the x402-sponsor-relay reference implementation.
  */
 const FEE_CLAMPS = {
   token_transfer: { floor: 180n, ceiling: 3000n },
-  contract_call: { floor: 3000n, ceiling: 100000n },
-  smart_contract: { floor: 10000n, ceiling: 100000n },
-  all: { floor: 180n, ceiling: 100000n }, // Widest range for aggregate fees
+  contract_call: { floor: 3000n, ceiling: 50000n },
+  smart_contract: { floor: 10000n, ceiling: 50000n },
+  all: { floor: 180n, ceiling: 50000n }, // Widest range for aggregate fees
 } as const;
 
 /**
@@ -120,4 +126,28 @@ export async function resolveFee(
     );
   }
   return BigInt(normalizedFee);
+}
+
+/**
+ * Resolve a default medium-priority fee for a given transaction type.
+ *
+ * Used by builder functions when the caller does not supply an explicit fee,
+ * so that ALL write paths receive a clamped fee rather than relying on the
+ * unclamped @stacks/transactions auto-estimation which can over-shoot.
+ *
+ * Falls back gracefully: if the Hiro mempool API is unreachable, returns the
+ * floor × 2 (medium multiplier) for the tx type.
+ *
+ * @param network - The Stacks network to fetch fee estimates from
+ * @param txType - The transaction type for ceiling/floor selection
+ * @returns Fee in micro-STX as bigint
+ */
+export async function resolveDefaultFee(
+  network: Network,
+  txType: "token_transfer" | "contract_call" | "smart_contract" = "contract_call"
+): Promise<bigint> {
+  const resolved = await resolveFee("medium", network, txType);
+  // resolveFee("medium", ...) always returns a value (never undefined) because
+  // "medium" is a valid preset — the cast is safe.
+  return resolved as bigint;
 }

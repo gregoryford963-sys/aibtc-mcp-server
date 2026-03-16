@@ -10,6 +10,7 @@ import {
 import { hexToBytes } from "@stacks/common";
 import { getStacksNetwork, getApiBaseUrl, type Network } from "../config/networks.js";
 import { getHiroApi } from "../services/hiro-api.js";
+import { resolveDefaultFee } from "../utils/fee.js";
 import type { WalletAddresses } from "../utils/storage.js";
 
 // ---------------------------------------------------------------------------
@@ -177,7 +178,7 @@ export interface ContractDeployOptions {
 
 /**
  * Transfer STX tokens to a recipient
- * @param fee Optional fee in micro-STX. If omitted, fee is auto-estimated.
+ * @param fee Optional fee in micro-STX. If omitted, a medium-priority clamped fee is resolved.
  */
 export async function transferStx(
   account: Account,
@@ -189,6 +190,9 @@ export async function transferStx(
   const networkName = getStacksNetwork(account.network);
   const nonce = await getNextNonce(account.address, account.network);
 
+  // Always resolve a clamped fee — prevents @stacks/transactions from over-estimating.
+  const resolvedFee = fee ?? await resolveDefaultFee(account.network, "token_transfer");
+
   const transaction = await makeSTXTokenTransfer({
     recipient,
     amount,
@@ -196,7 +200,7 @@ export async function transferStx(
     network: networkName,
     memo: memo || "",
     nonce,
-    ...(fee !== undefined && { fee }),
+    fee: resolvedFee,
   });
 
   const broadcastResponse = await broadcastTransaction({
@@ -228,6 +232,9 @@ export async function callContract(
   const networkName = getStacksNetwork(account.network);
   const nonce = await getNextNonce(account.address, account.network);
 
+  // Always resolve a clamped fee — prevents @stacks/transactions from over-estimating.
+  const resolvedFee = options.fee ?? await resolveDefaultFee(account.network, "contract_call");
+
   const transaction = await makeContractCall({
     contractAddress: options.contractAddress,
     contractName: options.contractName,
@@ -238,7 +245,7 @@ export async function callContract(
     nonce,
     postConditionMode: options.postConditionMode || PostConditionMode.Deny,
     postConditions: options.postConditions || [],
-    ...(options.fee !== undefined && { fee: options.fee }),
+    fee: resolvedFee,
   });
 
   const broadcastResponse = await broadcastTransaction({
@@ -270,13 +277,16 @@ export async function deployContract(
   const networkName = getStacksNetwork(account.network);
   const nonce = await getNextNonce(account.address, account.network);
 
+  // Always resolve a clamped fee — prevents @stacks/transactions from over-estimating.
+  const resolvedFee = options.fee ?? await resolveDefaultFee(account.network, "smart_contract");
+
   const transaction = await makeContractDeploy({
     contractName: options.contractName,
     codeBody: options.codeBody,
     senderKey: account.privateKey,
     network: networkName,
     nonce,
-    ...(options.fee !== undefined && { fee: options.fee }),
+    fee: resolvedFee,
   });
 
   const broadcastResponse = await broadcastTransaction({
