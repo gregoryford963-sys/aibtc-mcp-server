@@ -362,7 +362,25 @@ export function registerJingswapTools(server: McpServer): void {
           jingswapGet("/api/auction/pyth-prices"),
           jingswapGet("/api/auction/dex-price"),
         ]);
-        return createJsonResponse({ pyth, dex });
+        // Compute human-readable STX/BTC price from XYK pool balances
+        const xykStxPerBtc =
+          dex.xykBalances && dex.xykBalances.xBalance > 0
+            ? (dex.xykBalances.yBalance / dex.xykBalances.xBalance / 1e6) * 1e8
+            : null;
+        return createJsonResponse({
+          pyth,
+          dex: {
+            ...dex,
+            xykStxPerBtc: xykStxPerBtc ? Math.round(xykStxPerBtc * 100) / 100 : null,
+          },
+          _hint: {
+            xykStxPerBtc: "Human-readable STX per BTC from XYK pool",
+            xykPrice: "Raw contract value — use xykStxPerBtc instead",
+            dlmmPrice: "DLMM price — may be 0 or stale if pool inactive",
+            xBalance: "sBTC in sats (÷1e8 for BTC)",
+            yBalance: "STX in micro-STX (÷1e6 for STX)",
+          },
+        });
       } catch (error) {
         return createErrorResponse(error);
       }
