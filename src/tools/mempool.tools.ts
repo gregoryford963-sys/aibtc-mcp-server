@@ -2,9 +2,9 @@
  * Mempool Watch tools
  *
  * These tools provide read-only Bitcoin mempool monitoring:
- * - get_mempool_info: Current mempool statistics (tx count, vsize, fees)
- * - get_transaction_status: Confirmation status and details for a txid
- * - get_address_txs: Recent transaction history for a Bitcoin address
+ * - get_btc_mempool_info: Current mempool statistics (tx count, vsize, fees)
+ * - get_btc_transaction_status: Confirmation status and details for a txid
+ * - get_btc_address_txs: Recent transaction history for a Bitcoin address
  *
  * Data is fetched from the public mempool.space API (no authentication required).
  */
@@ -67,7 +67,7 @@ function formatTxSummary(tx: MempoolTx, network: typeof NETWORK) {
 export function registerMempoolTools(server: McpServer): void {
   // Get mempool info
   server.registerTool(
-    "get_mempool_info",
+    "get_btc_mempool_info",
     {
       description:
         "Get current Bitcoin mempool statistics including transaction count, " +
@@ -98,7 +98,7 @@ export function registerMempoolTools(server: McpServer): void {
 
   // Get transaction status
   server.registerTool(
-    "get_transaction_status",
+    "get_btc_transaction_status",
     {
       description:
         "Get confirmation status and details for a Bitcoin transaction by txid. " +
@@ -129,7 +129,7 @@ export function registerMempoolTools(server: McpServer): void {
 
   // Get address transaction history
   server.registerTool(
-    "get_address_txs",
+    "get_btc_address_txs",
     {
       description:
         "Get recent transaction history for a Bitcoin address (last 25 transactions). " +

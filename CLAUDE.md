@@ -209,6 +209,11 @@ Tools for Bitcoin L1 blockchain operations via mempool.space API:
 | "Send 50000 sats to tb1q..." | `transfer_btc` with recipient, amount=50000 |
 | "Transfer 0.001 BTC with fast fees" | `transfer_btc` with amount=100000, feeRate="fast" |
 
+### Mempool Watch (Bitcoin)
+- `get_btc_mempool_info` - Get current Bitcoin mempool statistics (tx count, vsize, fees, fee histogram)
+- `get_btc_transaction_status` - Get confirmation status and details for a Bitcoin transaction by txid
+- `get_btc_address_txs` - Get recent transaction history for a Bitcoin address (last 25 transactions)
+
 ### Direct Stacks Transactions
 - `transfer_stx` - Transfer STX tokens to a recipient (signs and broadcasts)
 - `call_contract` - Call a smart contract function (signs and broadcasts)

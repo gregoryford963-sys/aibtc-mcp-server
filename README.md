@@ -220,6 +220,13 @@ Both addresses are derived from the same recovery phrase, making it easy to mana
 | `get_cardinal_utxos` | UTXOs safe to spend (no inscriptions) |
 | `get_ordinal_utxos` | UTXOs containing inscriptions |
 
+### Mempool Watch (Bitcoin)
+| Tool | Description |
+|------|-------------|
+| `get_btc_mempool_info` | Get current Bitcoin mempool statistics (tx count, vsize, fees, fee histogram) |
+| `get_btc_transaction_status` | Get confirmation status and details for a Bitcoin transaction by txid |
+| `get_btc_address_txs` | Get recent transaction history for a Bitcoin address (last 25 transactions) |
+
 ### Bitcoin Inscriptions
 | Tool | Description |
 |------|-------------|

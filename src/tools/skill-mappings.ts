@@ -39,6 +39,9 @@ export const TOOL_SKILL_MAP: Record<string, string> = {
   get_cardinal_utxos: "btc",
   get_ordinal_utxos: "btc",
   get_inscriptions_by_address: "btc",
+  get_btc_mempool_info: "btc",
+  get_btc_transaction_status: "btc",
+  get_btc_address_txs: "btc",
 
   // sbtc skill — sBTC token operations
   sbtc_get_balance: "sbtc",
