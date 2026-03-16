@@ -125,7 +125,12 @@ export async function resolveFee(
       `Invalid fee value "${fee}" – expected a non-negative integer string in micro-STX or preset ("low", "medium", "high").`
     );
   }
-  return BigInt(normalizedFee);
+
+  // Clamp numeric overrides to the txType ceiling so user-specified fees
+  // can't accidentally produce NotEnoughFunds on complex calls.
+  const numericFee = BigInt(normalizedFee);
+  const clamps = FEE_CLAMPS[txType];
+  return clampFee(numericFee, clamps.floor, clamps.ceiling);
 }
 
 /**
@@ -149,5 +154,7 @@ export async function resolveDefaultFee(
   const resolved = await resolveFee("medium", network, txType);
   // resolveFee("medium", ...) always returns a value (never undefined) because
   // "medium" is a valid preset — the cast is safe.
+  // Fallback path (when Hiro is unreachable): returns floor × 2 for the txType.
+  // This risks slow inclusion during congestion but prevents hard failures.
   return resolved as bigint;
 }

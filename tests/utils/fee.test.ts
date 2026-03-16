@@ -79,19 +79,19 @@ describe("fee utility", () => {
       expect(result).toBeUndefined();
     });
 
-    it("should parse numeric string to bigint", async () => {
-      const result = await resolveFee("100000", "mainnet");
-      expect(result).toBe(100000n);
+    it("should parse numeric string to bigint (clamped to 'all' range)", async () => {
+      const result = await resolveFee("10000", "mainnet");
+      expect(result).toBe(10000n); // Within 'all' range (180-50000)
     });
 
-    it("should handle large numeric values", async () => {
+    it("should clamp large numeric values to 'all' ceiling", async () => {
       const result = await resolveFee("999999999999", "mainnet");
-      expect(result).toBe(999999999999n);
+      expect(result).toBe(50000n); // Clamped to 'all' ceiling
     });
 
     it("should trim whitespace from numeric strings", async () => {
-      const result = await resolveFee("  100000  ", "mainnet");
-      expect(result).toBe(100000n);
+      const result = await resolveFee("  10000  ", "mainnet");
+      expect(result).toBe(10000n); // Within 'all' range
     });
 
     it("should resolve 'low' preset from mempool", async () => {
@@ -152,6 +152,37 @@ describe("fee utility", () => {
       await expect(resolveFee("100,000", "mainnet")).rejects.toThrow(
         'Invalid fee value "100,000"'
       );
+    });
+  });
+
+  describe("resolveDefaultFee", () => {
+    it("should return a clamped medium fee for contract_call", async () => {
+      const { resolveDefaultFee } = await import("../../src/utils/fee.js");
+      const result = await resolveDefaultFee("mainnet", "contract_call");
+      expect(result).toBe(6000n); // medium_priority from mock (within 3000-50000)
+    });
+
+    it("should return a clamped medium fee for token_transfer", async () => {
+      const { resolveDefaultFee } = await import("../../src/utils/fee.js");
+      const result = await resolveDefaultFee("mainnet", "token_transfer");
+      expect(result).toBe(3000n); // medium_priority 4000 clamped to ceiling 3000
+    });
+
+    it("should use contract_call as default txType", async () => {
+      const { resolveDefaultFee } = await import("../../src/utils/fee.js");
+      const result = await resolveDefaultFee("mainnet");
+      expect(result).toBe(6000n); // contract_call medium_priority
+    });
+
+    it("should return fallback fee when API is unreachable", async () => {
+      const { getHiroApi } = await import("../../src/services/hiro-api.js");
+      vi.mocked(getHiroApi).mockReturnValue({
+        getMempoolFees: vi.fn().mockRejectedValue(new Error("API unreachable")),
+      } as any);
+      const { resolveDefaultFee } = await import("../../src/utils/fee.js");
+      const result = await resolveDefaultFee("mainnet", "contract_call");
+      // Fallback: floor (3000) × medium multiplier (2) = 6000
+      expect(result).toBe(6000n);
     });
   });
 
@@ -258,20 +289,30 @@ describe("fee utility", () => {
       });
     });
 
-    describe("numeric string fees (user-specified)", () => {
-      it("should NOT clamp numeric string fees below floor", async () => {
+    describe("numeric string fees (user-specified, clamped)", () => {
+      it("should clamp numeric string fees below floor to floor", async () => {
         const result = await resolveFee("1", "mainnet", "token_transfer");
-        expect(result).toBe(1n); // User-specified, not clamped
+        expect(result).toBe(180n); // Clamped to token_transfer floor
       });
 
-      it("should NOT clamp numeric string fees above ceiling", async () => {
+      it("should clamp numeric string fees above ceiling to ceiling", async () => {
         const result = await resolveFee("9999999999", "mainnet", "token_transfer");
-        expect(result).toBe(9999999999n); // User-specified, not clamped
+        expect(result).toBe(3000n); // Clamped to token_transfer ceiling
       });
 
-      it("should pass through exact user values", async () => {
+      it("should clamp user values to txType range", async () => {
         const result = await resolveFee("42069", "mainnet");
-        expect(result).toBe(42069n);
+        expect(result).toBe(42069n); // Within 'all' range (180-50000)
+      });
+
+      it("should clamp contract_call numeric override to 50000 ceiling", async () => {
+        const result = await resolveFee("100000", "mainnet", "contract_call");
+        expect(result).toBe(50000n); // Clamped from 100000 to ceiling
+      });
+
+      it("should pass through numeric values within range", async () => {
+        const result = await resolveFee("25000", "mainnet", "contract_call");
+        expect(result).toBe(25000n); // Within range (3000-50000)
       });
     });
 
