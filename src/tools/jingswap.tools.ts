@@ -1,9 +1,13 @@
 // Jingswap Auction MCP Tools
-// Read-only tools to query the STX/sBTC blind auction on Stacks.
+// Query + deposit/cancel tools for the STX/sBTC blind auction on Stacks.
 // Contract: SPV9K21TBFAK4KNRJXF5DFP8N7W46G4V9RCJDC22.sbtc-stx-jingswap
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import { uintCV, PostConditionMode, Pc } from "@stacks/transactions";
+import { getAccount, NETWORK } from "../services/x402.service.js";
+import { callContract } from "../transactions/builder.js";
+import { getExplorerTxUrl } from "../config/networks.js";
 import { createJsonResponse, createErrorResponse } from "../utils/index.js";
 
 const JINGSWAP_API =
@@ -161,6 +165,180 @@ export function registerJingswapTools(server: McpServer): void {
             "refund-stx": "deposit rejected (e.g. duplicate or below minimum)",
             "refund-sbtc": "deposit rejected (e.g. duplicate or below minimum)",
           },
+        });
+      } catch (error) {
+        return createErrorResponse(error);
+      }
+    }
+  );
+
+  // ── Deposit STX ─────────────────────────────────────────────
+
+  const JINGSWAP_CONTRACT_ADDRESS = "SPV9K21TBFAK4KNRJXF5DFP8N7W46G4V9RCJDC22";
+  const JINGSWAP_CONTRACT_NAME = "sbtc-stx-jingswap";
+  const SBTC_CONTRACT = "SM3VDXK3WZZSA84XXFKAFAF15NNZX32CTSG82JFQ4.sbtc-token";
+
+  async function assertDepositPhase(): Promise<void> {
+    const data = await jingswapGet("/api/auction/cycle-state");
+    if (data.phase !== 0) {
+      const phaseNames = ["deposit", "buffer", "settle"];
+      throw new Error(
+        `Cannot deposit/cancel — auction is in ${phaseNames[data.phase] || "unknown"} phase (must be in deposit phase)`
+      );
+    }
+  }
+
+  server.registerTool(
+    "jingswap_deposit_stx",
+    {
+      description:
+        "Deposit STX into the current Jingswap auction cycle. " +
+        "Only works during the deposit phase. Amount is in STX (e.g. 10 for 10 STX).",
+      inputSchema: {
+        amount: z.number().positive().describe("Amount of STX to deposit"),
+      },
+    },
+    async ({ amount }) => {
+      try {
+        await assertDepositPhase();
+        const account = await getAccount();
+        const microStx = BigInt(Math.floor(amount * 1_000_000));
+
+        const result = await callContract(account, {
+          contractAddress: JINGSWAP_CONTRACT_ADDRESS,
+          contractName: JINGSWAP_CONTRACT_NAME,
+          functionName: "deposit-stx",
+          functionArgs: [uintCV(microStx)],
+          postConditionMode: PostConditionMode.Deny,
+          postConditions: [
+            Pc.principal(account.address).willSendEq(microStx).ustx(),
+          ],
+        });
+
+        return createJsonResponse({
+          success: true,
+          txid: result.txid,
+          action: "deposit-stx",
+          amount: `${amount} STX`,
+          network: NETWORK,
+          explorerUrl: getExplorerTxUrl(result.txid, NETWORK),
+        });
+      } catch (error) {
+        return createErrorResponse(error);
+      }
+    }
+  );
+
+  // ── Deposit sBTC ────────────────────────────────────────────
+
+  server.registerTool(
+    "jingswap_deposit_sbtc",
+    {
+      description:
+        "Deposit sBTC into the current Jingswap auction cycle. " +
+        "Only works during the deposit phase. Amount is in satoshis (e.g. 1000 for 1000 sats).",
+      inputSchema: {
+        amount: z.number().int().positive().describe("Amount of sBTC in satoshis"),
+      },
+    },
+    async ({ amount }) => {
+      try {
+        await assertDepositPhase();
+        const account = await getAccount();
+        const sats = BigInt(amount);
+
+        const result = await callContract(account, {
+          contractAddress: JINGSWAP_CONTRACT_ADDRESS,
+          contractName: JINGSWAP_CONTRACT_NAME,
+          functionName: "deposit-sbtc",
+          functionArgs: [uintCV(sats)],
+          postConditionMode: PostConditionMode.Deny,
+          postConditions: [
+            Pc.principal(account.address)
+              .willSendEq(sats)
+              .ft(SBTC_CONTRACT as `${string}.${string}`, "sbtc-token"),
+          ],
+        });
+
+        return createJsonResponse({
+          success: true,
+          txid: result.txid,
+          action: "deposit-sbtc",
+          amount: `${amount} sats`,
+          network: NETWORK,
+          explorerUrl: getExplorerTxUrl(result.txid, NETWORK),
+        });
+      } catch (error) {
+        return createErrorResponse(error);
+      }
+    }
+  );
+
+  // ── Cancel STX Deposit ──────────────────────────────────────
+
+  server.registerTool(
+    "jingswap_cancel_stx",
+    {
+      description:
+        "Cancel your STX deposit from the current Jingswap auction cycle and get a full refund. " +
+        "Only works during the deposit phase.",
+    },
+    async () => {
+      try {
+        await assertDepositPhase();
+        const account = await getAccount();
+
+        const result = await callContract(account, {
+          contractAddress: JINGSWAP_CONTRACT_ADDRESS,
+          contractName: JINGSWAP_CONTRACT_NAME,
+          functionName: "cancel-stx-deposit",
+          functionArgs: [],
+          postConditionMode: PostConditionMode.Allow,
+          postConditions: [],
+        });
+
+        return createJsonResponse({
+          success: true,
+          txid: result.txid,
+          action: "cancel-stx-deposit",
+          network: NETWORK,
+          explorerUrl: getExplorerTxUrl(result.txid, NETWORK),
+        });
+      } catch (error) {
+        return createErrorResponse(error);
+      }
+    }
+  );
+
+  // ── Cancel sBTC Deposit ─────────────────────────────────────
+
+  server.registerTool(
+    "jingswap_cancel_sbtc",
+    {
+      description:
+        "Cancel your sBTC deposit from the current Jingswap auction cycle and get a full refund. " +
+        "Only works during the deposit phase.",
+    },
+    async () => {
+      try {
+        await assertDepositPhase();
+        const account = await getAccount();
+
+        const result = await callContract(account, {
+          contractAddress: JINGSWAP_CONTRACT_ADDRESS,
+          contractName: JINGSWAP_CONTRACT_NAME,
+          functionName: "cancel-sbtc-deposit",
+          functionArgs: [],
+          postConditionMode: PostConditionMode.Allow,
+          postConditions: [],
+        });
+
+        return createJsonResponse({
+          success: true,
+          txid: result.txid,
+          action: "cancel-sbtc-deposit",
+          network: NETWORK,
+          explorerUrl: getExplorerTxUrl(result.txid, NETWORK),
         });
       } catch (error) {
         return createErrorResponse(error);
