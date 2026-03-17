@@ -270,6 +270,23 @@ export const TOOL_SKILL_MAP: Record<string, string> = {
   bitflow_get_order: "bitflow",
   bitflow_cancel_order: "bitflow",
   bitflow_get_keeper_user: "bitflow",
+
+  // jingswap skill — blind batch auction for sBTC
+  jingswap_get_cycle_state: "jingswap",
+  jingswap_get_depositors: "jingswap",
+  jingswap_get_user_deposit: "jingswap",
+  jingswap_get_settlement: "jingswap",
+  jingswap_get_cycles_history: "jingswap",
+  jingswap_get_user_activity: "jingswap",
+  jingswap_get_prices: "jingswap",
+  jingswap_deposit_stx: "jingswap",
+  jingswap_deposit_sbtc: "jingswap",
+  jingswap_cancel_stx: "jingswap",
+  jingswap_cancel_sbtc: "jingswap",
+  jingswap_close_deposits: "jingswap",
+  jingswap_settle: "jingswap",
+  jingswap_settle_with_refresh: "jingswap",
+  jingswap_cancel_cycle: "jingswap",
 };
 
 /**
