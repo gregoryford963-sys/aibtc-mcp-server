@@ -442,8 +442,10 @@ Note: Stackspot is only available on mainnet.`,
           contractName: parsed.contractName,
           functionName: "claim-pot-reward",
           functionArgs: [],
-          // TODO: tighten to PostConditionMode.Deny once post-conditions are
-          // defined; kept as Allow to match the upstream stackspot skill for now.
+          // PostConditionMode.Allow is intentional: the pot contract transfers
+          // STX back to each participant and sBTC to the winner. The exact amounts
+          // are not known client-side until the contract executes, so strict
+          // post-conditions cannot be set without an additional read-only query.
           postConditionMode: PostConditionMode.Allow,
         });
 
@@ -504,8 +506,9 @@ Note: Stackspot is only available on mainnet.`,
           contractName: parsed.contractName,
           functionName: "cancel-pot",
           functionArgs: [],
-          // TODO: tighten to PostConditionMode.Deny once post-conditions are
-          // defined; kept as Allow to match the upstream stackspot skill for now.
+          // PostConditionMode.Allow is intentional: the pot contract returns STX
+          // to contributors on cancel. The amount is not known client-side without
+          // an additional read-only query, so strict post-conditions are deferred.
           postConditionMode: PostConditionMode.Allow,
         });
 
