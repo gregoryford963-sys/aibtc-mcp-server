@@ -16,7 +16,6 @@ import {
 } from "../utils/x402-protocol.js";
 import { generateWallet, getStxAddress } from "@stacks/wallet-sdk";
 import { NETWORK, API_URL, getStacksNetwork, type Network } from "../config/networks.js";
-import { getNetworkFromStacksChainId } from "../config/caip.js";
 import type { Account } from "../transactions/builder.js";
 import { getWalletManager } from "./wallet-manager.js";
 import { formatStx, formatSbtc } from "../utils/formatting.js";
@@ -25,6 +24,13 @@ import { getHiroApi } from "./hiro-api.js";
 import { createHash } from "crypto";
 import { InsufficientBalanceError } from "../utils/errors.js";
 import { getContracts, parseContractId } from "../config/contracts.js";
+
+/** Map a CAIP-2 Stacks chain ID to a Network, or null if unrecognised. */
+function getNetworkFromStacksChainId(chainId: string): Network | null {
+  if (chainId === "stacks:1") return "mainnet";
+  if (chainId === "stacks:2147483648") return "testnet";
+  return null;
+}
 
 // Track payment attempts per client instance (auto-cleanup via WeakMap)
 const paymentAttempts: WeakMap<AxiosInstance, number> = new WeakMap();
