@@ -15,54 +15,6 @@ export class AibtcError extends Error {
 }
 
 /**
- * Error for invalid configuration
- */
-export class ConfigError extends AibtcError {
-  constructor(message: string, details?: unknown) {
-    super(message, "CONFIG_ERROR", details);
-    this.name = "ConfigError";
-  }
-}
-
-/**
- * Error for transaction failures
- */
-export class TransactionError extends AibtcError {
-  constructor(message: string, public readonly txid?: string, details?: unknown) {
-    super(message, "TRANSACTION_ERROR", details);
-    this.name = "TransactionError";
-  }
-}
-
-/**
- * Error for API failures
- */
-export class ApiError extends AibtcError {
-  constructor(
-    message: string,
-    public readonly statusCode?: number,
-    details?: unknown
-  ) {
-    super(message, "API_ERROR", details);
-    this.name = "ApiError";
-  }
-}
-
-/**
- * Error for contract call failures
- */
-export class ContractError extends AibtcError {
-  constructor(
-    message: string,
-    public readonly contractId?: string,
-    details?: unknown
-  ) {
-    super(message, "CONTRACT_ERROR", details);
-    this.name = "ContractError";
-  }
-}
-
-/**
  * Base error for wallet operations
  */
 export class WalletError extends AibtcError {
@@ -131,7 +83,7 @@ export class InsufficientBalanceError extends AibtcError {
 /**
  * Format error for tool response
  */
-export function formatError(error: unknown): { message: string; code?: string; details?: unknown } {
+function formatError(error: unknown): { message: string; code?: string; details?: unknown } {
   if (error instanceof AibtcError) {
     return {
       message: redactSensitive(error.message),

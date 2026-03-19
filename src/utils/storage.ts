@@ -89,14 +89,14 @@ const CURRENT_CONFIG_VERSION = 1;
 /**
  * Get storage directory path
  */
-export function getStorageDir(): string {
+function getStorageDir(): string {
   return STORAGE_DIR;
 }
 
 /**
  * Check if storage directory exists
  */
-export async function storageExists(): Promise<boolean> {
+async function storageExists(): Promise<boolean> {
   try {
     await fs.access(STORAGE_DIR);
     return true;
