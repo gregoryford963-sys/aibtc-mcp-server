@@ -33,7 +33,7 @@ export function formatSbtc(sats: string | bigint): string {
 /**
  * Format token amount with decimals
  */
-export function formatTokenAmount(
+function formatTokenAmount(
   amount: string | bigint,
   decimals: number,
   symbol?: string
@@ -57,7 +57,7 @@ export function formatTokenAmount(
 /**
  * Parse STX amount string to micro-STX
  */
-export function parseStxAmount(amount: string): bigint {
+function parseStxAmount(amount: string): bigint {
   // Remove STX suffix if present
   const cleaned = amount.replace(/\s*STX$/i, "").trim();
 
@@ -73,7 +73,7 @@ export function parseStxAmount(amount: string): bigint {
 /**
  * Format address for display (truncated)
  */
-export function formatAddress(address: string, chars: number = 8): string {
+function formatAddress(address: string, chars: number = 8): string {
   if (address.length <= chars * 2 + 3) {
     return address;
   }
@@ -83,21 +83,21 @@ export function formatAddress(address: string, chars: number = 8): string {
 /**
  * Format transaction ID for display
  */
-export function formatTxId(txid: string, chars: number = 8): string {
+function formatTxId(txid: string, chars: number = 8): string {
   return formatAddress(txid, chars);
 }
 
 /**
  * Format date from timestamp
  */
-export function formatDate(timestamp: number): string {
+function formatDate(timestamp: number): string {
   return new Date(timestamp * 1000).toISOString();
 }
 
 /**
  * Format block height
  */
-export function formatBlockHeight(height: number): string {
+function formatBlockHeight(height: number): string {
   return height.toLocaleString();
 }
 
@@ -120,7 +120,7 @@ export function createJsonResponse(data: unknown): {
 /**
  * Create success response for MCP tools
  */
-export function createSuccessResponse(
+function createSuccessResponse(
   message: string,
   data?: unknown
 ): {

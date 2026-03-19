@@ -8,7 +8,7 @@ import { NETWORK } from "../config/networks.js";
 import { getWalletManager } from "../services/wallet-manager.js";
 
 /** Default read-only caller address per network (boot addresses) */
-export const DEFAULT_CALLER: Record<string, string> = {
+const DEFAULT_CALLER: Record<string, string> = {
   mainnet: "SP000000000000000000002Q6VF78",
   testnet: "ST000000000000000000002AMW42H",
 };
