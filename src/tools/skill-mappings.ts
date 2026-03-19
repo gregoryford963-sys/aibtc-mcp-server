@@ -320,6 +320,17 @@ export const TOOL_SKILL_MAP: Record<string, string> = {
   bounty_status: "bounty-scanner",
   bounty_my_claims: "bounty-scanner",
   bounty_stats: "bounty-scanner",
+
+  // runes skill — Bitcoin-native fungible token protocol
+  runes_list_etchings: "runes",
+  runes_get_etching: "runes",
+  runes_get_holders: "runes",
+  runes_get_activity: "runes",
+  runes_get_address_balances: "runes",
+  runes_get_address_activity: "runes",
+  get_rune_balances: "runes",
+  get_rune_utxos: "runes",
+  transfer_rune: "runes",
 };
 
 /**

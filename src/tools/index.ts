@@ -39,6 +39,7 @@ import { registerIdentityTools } from "./identity.tools.js";
 import { registerCredentialsTools } from "./credentials.tools.js";
 import { registerSouldinalsTools } from "./souldinals.tools.js";
 import { registerBountyScannerTools } from "./bounty-scanner.tools.js";
+import { registerRunesTools } from "./runes.tools.js";
 import { getSkillForTool } from "./skill-mappings.js";
 
 /**
@@ -187,6 +188,9 @@ export function registerAllTools(server: McpServer): void {
 
   // Bounty Scanner (bounty.drx4.xyz — list, match, claim, status, my-claims)
   registerBountyScannerTools(server);
+
+  // Runes (Bitcoin-native fungible tokens — list, query, holders, activity, balances)
+  registerRunesTools(server);
 
   restoreRegisterTool();
 }
