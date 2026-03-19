@@ -104,7 +104,7 @@ export const TOOL_SKILL_MAP: Record<string, string> = {
   get_network_status: "query",
   call_read_only_function: "query",
 
-  // x402 skill — x402 paid endpoints, inbox, scaffolding, OpenRouter
+  // x402 skill — x402 paid endpoints, scaffolding, OpenRouter
   list_x402_endpoints: "x402",
   execute_x402_endpoint: "x402",
   probe_x402_endpoint: "x402",
@@ -112,7 +112,6 @@ export const TOOL_SKILL_MAP: Record<string, string> = {
   scaffold_x402_ai_endpoint: "x402",
   openrouter_integration_guide: "x402",
   openrouter_models: "x402",
-  send_inbox_message: "x402",
 
   // defi skill — ALEX DEX and Zest Protocol
   alex_list_pools: "defi",
@@ -182,14 +181,7 @@ export const TOOL_SKILL_MAP: Record<string, string> = {
   pillar_direct_revoke_fast_pool: "pillar",
   pillar_direct_stacking_status: "pillar",
 
-  // settings skill — MCP server configuration and relay health
-  set_hiro_api_key: "settings",
-  get_hiro_api_key: "settings",
-  delete_hiro_api_key: "settings",
-  set_stacks_api_url: "settings",
-  get_stacks_api_url: "settings",
-  delete_stacks_api_url: "settings",
-  get_server_version: "settings",
+  // settings skill — relay health and sponsor nonce recovery
   check_relay_health: "settings",
   recover_sponsor_nonce: "settings",
 
@@ -202,16 +194,6 @@ export const TOOL_SKILL_MAP: Record<string, string> = {
   schnorr_verify_digest: "signing",
   nostr_sign_event: "signing",
 
-  // ordinals skill — Bitcoin ordinals inscription operations
-  get_taproot_address: "ordinals",
-  estimate_inscription_fee: "ordinals",
-  inscribe: "ordinals",
-  inscribe_reveal: "ordinals",
-  get_inscription: "ordinals",
-  inscribe_child: "ordinals",
-  inscribe_child_reveal: "ordinals",
-  estimate_child_inscription_fee: "ordinals",
-
   // ordinals-marketplace skill — Magic Eden marketplace: browse listings, list/buy/cancel
   ordinals_get_listings: "ordinals-marketplace",
   ordinals_list_for_sale: "ordinals-marketplace",
@@ -219,11 +201,7 @@ export const TOOL_SKILL_MAP: Record<string, string> = {
   ordinals_buy: "ordinals-marketplace",
   ordinals_cancel_listing: "ordinals-marketplace",
 
-  // ordinals-p2p skill — peer-to-peer ordinals trading via PSBT, trade ledger, and Taproot multisig
-  psbt_decode: "ordinals-p2p",
-  psbt_sign: "ordinals-p2p",
-  psbt_broadcast: "ordinals-p2p",
-  psbt_create_ordinal_buy: "ordinals-p2p",
+  // ordinals-p2p skill — peer-to-peer ordinals trading via trade ledger and Taproot multisig
   ordinals_p2p_list_trades: "ordinals-p2p",
   ordinals_p2p_get_trade: "ordinals-p2p",
   ordinals_p2p_my_trades: "ordinals-p2p",
@@ -238,8 +216,6 @@ export const TOOL_SKILL_MAP: Record<string, string> = {
   taproot_multisig_guide: "ordinals-p2p",
 
   // identity skill — ERC-8004 on-chain agent identity
-  register_identity: "identity",
-  get_identity: "identity",
   identity_get_last_id: "identity",
   identity_get: "identity",
   identity_get_metadata: "identity",
@@ -251,15 +227,6 @@ export const TOOL_SKILL_MAP: Record<string, string> = {
   identity_unset_wallet: "identity",
   identity_transfer: "identity",
 
-  // reputation skill — ERC-8004 on-chain agent reputation
-  give_feedback: "reputation",
-  get_reputation: "reputation",
-
-  // validation skill — ERC-8004 on-chain agent validation
-  request_validation: "validation",
-  get_validation_status: "validation",
-  get_validation_summary: "validation",
-
   // stackspot skill — stacking lottery pots
   stackspot_list_pots: "stackspot",
   stackspot_get_pot_state: "stackspot",
@@ -267,19 +234,6 @@ export const TOOL_SKILL_MAP: Record<string, string> = {
   stackspot_start_pot: "stackspot",
   stackspot_claim_rewards: "stackspot",
   stackspot_cancel_pot: "stackspot",
-
-  // bitflow skill — Bitflow DEX aggregator
-  bitflow_get_ticker: "bitflow",
-  bitflow_get_tokens: "bitflow",
-  bitflow_get_swap_targets: "bitflow",
-  bitflow_get_quote: "bitflow",
-  bitflow_get_routes: "bitflow",
-  bitflow_swap: "bitflow",
-  bitflow_get_keeper_contract: "bitflow",
-  bitflow_create_order: "bitflow",
-  bitflow_get_order: "bitflow",
-  bitflow_cancel_order: "bitflow",
-  bitflow_get_keeper_user: "bitflow",
 
   // credentials skill — encrypted credential store (AES-256-GCM)
   credentials_list: "credentials",
