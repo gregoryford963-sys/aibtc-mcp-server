@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.42.0](https://github.com/aibtcdev/aibtc-mcp-server/compare/mcp-server-v1.41.0...mcp-server-v1.42.0) (2026-03-20)
+
+
+### Features
+
+* **jingswap:** update contract names to sbtc-stx-jing / sbtc-usdcx-jing ([#383](https://github.com/aibtcdev/aibtc-mcp-server/issues/383)) ([188740c](https://github.com/aibtcdev/aibtc-mcp-server/commit/188740c4de7c3003299193e2327be01e04893ba1))
+
 ## [1.41.0](https://github.com/aibtcdev/aibtc-mcp-server/compare/mcp-server-v1.40.0...mcp-server-v1.41.0) (2026-03-19)
 
 
