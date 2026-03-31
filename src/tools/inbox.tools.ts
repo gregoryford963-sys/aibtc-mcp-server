@@ -476,8 +476,26 @@ Use this instead of execute_x402_endpoint for inbox messages — the generic too
             );
             const txid = settlement?.transaction;
 
-            // Advance shared nonce tracker on success
-            await advanceNonceCache(account.address, nonce, txid ?? "");
+            // Extract paymentId and paymentStatus from inbox response body.
+            // The inbox API nests these under "inbox": { paymentId, paymentStatus }.
+            const inboxData = (parsed as Record<string, unknown>).inbox as Record<string, unknown> | undefined;
+            const inboxPaymentId = (inboxData?.paymentId ?? parsed.paymentId) as string | undefined;
+            const inboxPaymentStatus = (inboxData?.paymentStatus ?? parsed.paymentStatus) as string | undefined;
+
+            // Advance shared nonce tracker on success.
+            // When no txid is available (pending settlement), record the paymentId
+            // so the agent can correlate the nonce with a trackable reference.
+            // Fall back to the client-generated paymentId if the response body is
+            // missing/malformed, so success responses always record a non-empty ref.
+            const resolvedPaymentId = inboxPaymentId || paymentId;
+            const nonceRef = txid || `pending:${resolvedPaymentId}`;
+            await advanceNonceCache(account.address, nonce, nonceRef);
+
+            // Build payment info — always include when we have any payment reference.
+            // This ensures the agent sees payment status even when settlement is pending.
+            // Derive checkUrl from INBOX_BASE to avoid host drift.
+            const inboxBaseUrl = new URL(INBOX_BASE);
+            const paymentCheckUrl = `${inboxBaseUrl.origin}/api/payment-status/${resolvedPaymentId}`;
 
             return createJsonResponse({
               success: true,
@@ -488,13 +506,16 @@ Use this instead of execute_x402_endpoint for inbox messages — the generic too
               },
               contentLength: content.length,
               inbox: parsed,
-              ...(txid && {
-                payment: {
+              payment: {
+                ...(txid && {
                   txid,
-                  amount: accept.amount + " sats sBTC",
                   explorer: getExplorerTxUrl(txid, NETWORK),
-                },
-              }),
+                }),
+                amount: accept.amount + " sats sBTC",
+                status: inboxPaymentStatus ?? (txid ? "confirmed" : resolvedPaymentId ? "pending" : "unknown"),
+                paymentId: resolvedPaymentId,
+                checkUrl: paymentCheckUrl,
+              },
             });
           }
 
