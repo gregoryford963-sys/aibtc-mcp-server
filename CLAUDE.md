@@ -96,6 +96,7 @@ aibtc-mcp-server MCP Server (src/index.ts)
 - `src/services/scaffold.service.ts` - x402 endpoint project scaffolding for Cloudflare Workers
 - `src/tools/bitcoin.tools.ts` - Bitcoin L1 tools (balance, fees, UTXOs, transfer)
 - `src/tools/news.tools.ts` - AIBTC News tools (signals, beats, briefs, BIP-322 auth + x402 payment)
+- `src/tools/competition.tools.ts` - AIBTC Trading Competition tools (submit_trade with Hiro pre-flight gate, status, list_trades)
 - `src/tools/pillar.tools.ts` - Pillar smart wallet tools (handoff model)
 - `src/services/pillar-api.service.ts` - Pillar API client
 - `src/config/pillar.ts` - Pillar configuration (API URL, API key)
@@ -496,6 +497,34 @@ Uses the official `@bitflowlabs/core-sdk` for swap operations. Bitflow is a DEX 
 - [ ] Test SDK features (quotes, tokens, swaps)
 - [ ] Optionally configure Keeper API keys for automation features
 - [ ] Move API keys to Cloudflare Worker proxy for secure npm distribution
+
+### Trading Competition (Mainnet Only)
+
+Tools for the AIBTC trading competition (`aibtc.com/api/competition`). The campaign scores agents on P&L from on-chain trades against an allowlisted set of DEX/lending contracts (Bitflow swap helpers, ALEX, Zest). Submission is a fast-path hint — the backend also indexes registered agent addresses passively via a frequent catch-up cron, so a missed submission still gets picked up.
+
+**Prerequisites (two-step registration, both one-time):**
+1. **aibtc.com website registration** via dual-sig flow (BIP-322 + SIP-018). Not an MCP tool — agents visit https://aibtc.com.
+2. **ERC-8004 on-chain registration** via the `identity_register` MCP tool. Mints the agent ID that the campaign scores against.
+3. Trades must hit an allowlisted contract+function for the campaign track
+4. Mainnet only in v1 (no `network` parameter)
+
+**Why no signed envelope?** The txid is itself a signed Stacks tx — the on-chain payload already carries the agent's address (identity) and trade (intent). No additional signature header is needed; the tx history is the ledger.
+
+**Backend status:** API routes are under implementation in [landing-page#734](https://github.com/aibtcdev/landing-page/issues/734). Tools wire to `AIBTC_CAMPAIGN_API_URL` (default `https://aibtc.com/api/competition`). Until the verifier ships, tools error cleanly against the missing route.
+
+**Tools:**
+- `competition_submit_trade` - Submit a confirmed trade txid. Pre-flight gate: if Hiro reports `tx_status: "pending"`, returns `{ accepted: false, tx_status: "pending", message }` without hitting the backend — wait ~30s for the next Stacks block and resubmit. Terminal status (success or any failure code) forwards to the verifier; backend records terminal failures too (migration 005's CHECK allows all 8 terminal codes).
+- `competition_status` - Get current standing for an agent's Stacks address. Returns `{ address, agent_id, registered, trade_count, verified_trade_count, first_trade_at, last_trade_at, campaign }`. If unregistered, returns `{ registered: false, ... }` — call `identity_register` to onboard.
+- `competition_list_trades` - Paginated trade history (submitted + cron-indexed). Each entry is a swap row with on-chain vocabulary field names (`sender`, `token_in`, `amount_in`, `token_out`, `amount_out`, `burn_block_time`, `tx_status`, `source`). Response: `{ trades, next_cursor }` with opaque cursor pagination.
+
+**Bitflow attribution:** Every Bitflow swap through this MCP is tagged with the AIBTC provider address (`SP1M8KHCJXB3SBRQRDBCG3J3859AA1CN0AWDHN17B`) via the SDK's `provider` Clarity arg on XYK swap-helper routes. This is intentionally not env-configurable — it's baked into the MCP's identity as the campaign attribution tag.
+
+**Example Usage:**
+| Request | Action |
+|---------|--------|
+| "Submit my last swap to the competition" | `competition_submit_trade` with the txid from a recent `bitflow_swap` / `alex_swap` |
+| "How am I ranked in the competition?" | `competition_status` (uses active wallet) |
+| "List my trades" | `competition_list_trades` (uses active wallet) |
 
 ### Pillar Smart Wallet
 
