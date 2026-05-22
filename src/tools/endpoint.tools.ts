@@ -354,16 +354,43 @@ For aibtc.com inbox messages, use send_inbox_message instead — it uses sponsor
         const paymentSigHeader = (response as { config?: { headers?: Record<string, string> } })
           .config?.headers?.[X402_HEADERS.PAYMENT_SIGNATURE];
         const paymentAttempted = Boolean(paymentSigHeader);
-        const txid = rawTxid ?? (paymentAttempted ? `unknown-txid-${Date.now()}` : undefined);
 
-        if (paymentAttempted && txid) {
-          recordTransaction(dedupKey, txid);
+        // Never invent a placeholder txid when payment was attempted but the
+        // response doesn't expose one — a fake string actively misleads
+        // downstream tooling and operators (see #487). Surface txid: null
+        // with an explicit recovery hint so the caller can discover the
+        // real txid via get_account_transactions.
+        const txid: string | null = rawTxid ?? null;
+
+        // Keep dedup tracking active even when the txid is not yet
+        // observable, using a synthetic pending marker that cannot be
+        // confused for a real chain txid.
+        if (paymentAttempted) {
+          recordTransaction(dedupKey, txid ?? `pending:${dedupKey}`);
         }
+
+        // Build the txid response fields per the behavior matrix:
+        //   payment attempted + observable txid → { txid: "0x..." }
+        //   payment attempted + unobservable     → { txid: null, txidNote: "..." }
+        //   no payment + observable txid         → { txid: "0x..." }
+        //   no payment + no txid                 → {}
+        const txidFields = paymentAttempted
+          ? {
+              txid,
+              ...(txid === null && {
+                txidNote:
+                  "Payment broadcast; real txid not yet observable in response. " +
+                  "Query get_account_transactions to discover the settled txid for verification or recovery.",
+              }),
+            }
+          : txid !== null
+            ? { txid }
+            : {};
 
         return createJsonResponse({
           endpoint: `${method} ${fullUrl}`,
           response: response.data,
-          ...(txid && { txid }),
+          ...txidFields,
         });
       } catch (error) {
         const label = fullUrl || url || path || "unknown";
